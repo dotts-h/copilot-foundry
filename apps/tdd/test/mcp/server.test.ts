@@ -3,9 +3,13 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createTddMcpServer } from "../../src/mcp/server.js";
+import { DEFAULT_MODELS } from "../../src/types.js";
+
+let capturedSpec: unknown;
 
 vi.mock("../../src/featureFsm.js", () => ({
-  runFeature: vi.fn(async (_spec: unknown, _backend: unknown, artifactRoot: string, runId: string) => {
+  runFeature: vi.fn(async (spec: unknown, _backend: unknown, artifactRoot: string, runId: string) => {
+    capturedSpec = spec;
     await new Promise((resolve) => setTimeout(resolve, 300));
     const { writeArtifact } = await import("../../src/artifacts/vault.js");
     const { writeRunState } = await import("../../src/runStore.js");
@@ -110,5 +114,20 @@ describe("tdd MCP server (feature mode)", () => {
 
     const pending = JSON.parse((await callTool(server, "tdd_workflow_result", { runId })).content[0].text);
     expect(pending.status).toBe("running");
+  });
+
+  it("threads per-phase model overrides into the constructed spec, falling back to defaults for omitted phases", async () => {
+    const server = createTddMcpServer({ artifactRoot });
+    await callTool(server, "tdd_workflow_start", {
+      ...BASE_ARGS,
+      models: { red: "custom-red-model" },
+    });
+
+    const models = (capturedSpec as { models: { plan: string; red: string; green: string; escalation: string } })
+      .models;
+    expect(models.red).toBe("custom-red-model");
+    expect(models.plan).toBe(DEFAULT_MODELS.plan);
+    expect(models.green).toBe(DEFAULT_MODELS.green);
+    expect(models.escalation).toBe(DEFAULT_MODELS.escalation);
   });
 });

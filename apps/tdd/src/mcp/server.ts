@@ -5,7 +5,7 @@ import { readArtifact } from "../artifacts/vault.js";
 import { CursorBackend } from "../backend/cursorBackend.js";
 import { runFeature, type FeatureLedger } from "../featureFsm.js";
 import { readRunState, writeRunState } from "../runStore.js";
-import { DEFAULT_MODELS, type FeatureRunSpec } from "../types.js";
+import { DEFAULT_MODELS, type FeatureRunSpec, type ModelRouting } from "../types.js";
 
 export function createTddMcpServer(deps: { artifactRoot: string }): McpServer {
   const server = new McpServer({ name: "helm-tdd", version: "0.1.0" });
@@ -25,9 +25,27 @@ export function createTddMcpServer(deps: { artifactRoot: string }): McpServer {
         targetHint: z.string().optional(),
         maxRepairIterations: z.number().int().min(1).max(10).default(5),
         commit: z.boolean().default(false),
+        models: z
+          .object({
+            plan: z.string().optional(),
+            red: z.string().optional(),
+            green: z.string().optional(),
+            escalation: z.string().optional(),
+          })
+          .optional(),
       },
     },
-    async ({ targetDir, venvDir, featureDescription, scope, hitl, targetHint, maxRepairIterations, commit }) => {
+    async ({
+      targetDir,
+      venvDir,
+      featureDescription,
+      scope,
+      hitl,
+      targetHint,
+      maxRepairIterations,
+      commit,
+      models,
+    }) => {
       const runId = randomUUID();
       const startedAt = new Date().toISOString();
       await writeRunState(deps.artifactRoot, runId, {
@@ -37,6 +55,13 @@ export function createTddMcpServer(deps: { artifactRoot: string }): McpServer {
         updatedAt: startedAt,
       });
 
+      const resolvedModels: ModelRouting = {
+        plan: models?.plan ?? DEFAULT_MODELS.plan,
+        red: models?.red ?? DEFAULT_MODELS.red,
+        green: models?.green ?? DEFAULT_MODELS.green,
+        escalation: models?.escalation ?? DEFAULT_MODELS.escalation,
+      };
+
       const spec: FeatureRunSpec = {
         mode: "feature",
         targetDir,
@@ -45,7 +70,7 @@ export function createTddMcpServer(deps: { artifactRoot: string }): McpServer {
         hitl,
         featureDescription,
         targetHint,
-        models: DEFAULT_MODELS,
+        models: resolvedModels,
         maxRepairIterations,
         commit,
       };
