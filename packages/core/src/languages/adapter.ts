@@ -70,6 +70,12 @@ export class PythonAdapter implements LanguageAdapter {
   }
 }
 
+// Handles flat `test()` calls only. Node's TAP reporter indents subtest lines under a
+// `# Subtest:` parent for `describe()`-nested tests, which this line-anchored regex does not
+// match -- a nested suite collapses into its parent's single pass/fail line instead of
+// attributing each inner test. Not hit by anything in this package (runGenericSlice only calls
+// runTests(), never runTestsVerbose()) -- found and deliberately deferred during M4 Task 1's
+// review; fixing it correctly needs indentation-aware/recursive TAP parsing, not a quick patch.
 function parseTapOutput(raw: string): VerboseTestResult[] {
   const results: VerboseTestResult[] = [];
   const lineRegex = /^(ok|not ok)\s+\d+\s+-\s+(.+)$/gm;
