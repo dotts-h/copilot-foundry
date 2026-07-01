@@ -8,7 +8,9 @@ completion gate that closes the triangulation hole plain TDD leaves open.
 
 ## Status
 
-Early build. `apps/tdd` (helm-tdd) M0 — the proving skeleton — is in progress.
+Early build. `apps/tdd` (helm-tdd) M0 (proving skeleton) and M1 (walking skeleton: feature-mode
+map/baseline/scope/plan pipeline, formalized RED/GREEN gates, RED linter, disk-backed async runs)
+are complete. M2 (refactor + verify) is next.
 
 ## Layout
 

@@ -10,3 +10,6 @@ build/
 .DS_Store
 coverage/
 *.tsbuildinfo
+.superpowers/
+**/__pycache__/
+*.pyc
