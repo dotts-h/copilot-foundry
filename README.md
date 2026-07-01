@@ -2,8 +2,8 @@
 
 A vendor-neutral TDD workflow for coding agents. `helm-tdd` runs `RED → GREEN → REFACTOR`
 as a finite-state machine that owns the loop, exposes a single async entry point to a
-cockpit (Claude Code), and executes phases on a swappable backend (Cursor/Composer 2.5 by
-default, Claude Agent SDK as fallback) behind a structural leash and a constant-mutant
+cockpit (Claude Code), and executes phases on a swappable backend (Claude Agent SDK/Sonnet 5 by
+default, Cursor/Composer 2.5 as the alternative) behind a structural leash and a constant-mutant
 completion gate that closes the triangulation hole plain TDD leaves open.
 
 ## Status
