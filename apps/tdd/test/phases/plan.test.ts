@@ -12,8 +12,18 @@ describe("planSlices", () => {
     const backend = new ScriptedBackend([
       () => ({
         resultText: JSON.stringify([
-          { description: "reverse words in a string", implRelPath: "strings_kata.py", testRelPath: "test_strings_kata.py" },
-          { description: "detect palindromes", implRelPath: "strings_kata.py", testRelPath: "test_strings_kata.py" },
+          {
+            description: "reverse words in a string",
+            implRelPath: "strings_kata.py",
+            testRelPath: "test_strings_kata.py",
+            functionName: "reverse_words",
+          },
+          {
+            description: "detect palindromes",
+            implRelPath: "strings_kata.py",
+            testRelPath: "test_strings_kata.py",
+            functionName: "is_palindrome",
+          },
         ]),
       }),
     ]);
@@ -29,6 +39,7 @@ describe("planSlices", () => {
 
     expect(slices).toHaveLength(2);
     expect(slices[0].description).toMatch(/reverse/);
+    expect(slices[0].functionName).toBe("reverse_words");
     expect(backend.calls[0].model).toBe("fake-plan");
   });
 
@@ -36,7 +47,7 @@ describe("planSlices", () => {
     const backend = new ScriptedBackend([
       () => ({
         resultText:
-          'Here is the plan:\n```json\n[{"description":"a","implRelPath":"x.py","testRelPath":"test_x.py"}]\n```\n',
+          'Here is the plan:\n```json\n[{"description":"a","implRelPath":"x.py","testRelPath":"test_x.py","functionName":"a"}]\n```\n',
       }),
     ]);
 
@@ -49,7 +60,7 @@ describe("planSlices", () => {
       scopeReport: REPO_SCOPE,
     });
 
-    expect(slices).toEqual([{ description: "a", implRelPath: "x.py", testRelPath: "test_x.py" }]);
+    expect(slices).toEqual([{ description: "a", implRelPath: "x.py", testRelPath: "test_x.py", functionName: "a" }]);
   });
 
   it("throws a clear error when the model response has no JSON array", async () => {
@@ -69,7 +80,7 @@ describe("planSlices", () => {
 
   it("throws when a planned slice is missing a required field", async () => {
     const backend = new ScriptedBackend([
-      () => ({ resultText: JSON.stringify([{ description: "a", implRelPath: "x.py" }]) }),
+      () => ({ resultText: JSON.stringify([{ description: "a", implRelPath: "x.py", functionName: "a" }]) }),
     ]);
 
     await expect(

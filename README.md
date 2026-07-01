@@ -8,11 +8,12 @@ completion gate that closes the triangulation hole plain TDD leaves open.
 
 ## Status
 
-Early build. `apps/tdd` (helm-tdd) M0 (proving skeleton), M1 (walking skeleton: feature-mode
-map/baseline/scope/plan pipeline, formalized RED/GREEN gates, RED linter, disk-backed async runs),
-and M2 (REFACTOR ratchet, per-slice CHECKPOINT patches, the VERIFY ladder, and an ACCEPT
-traceability ledger -- the FSM now runs map through accept) are complete. M3 (harden/bugfix/legacy)
-is next.
+Early build. `apps/tdd` (helm-tdd) M0 (proving skeleton), M1 (walking skeleton), M2 (REFACTOR
+ratchet, CHECKPOINT, VERIFY ladder, ACCEPT ledger), and M3 (a generic constant-mutant completion
+gate closing the triangulation hole for the full pipeline, extended mutation operators, a dry-run
+writeback phase into `memory/`, and a standalone legacy-characterization primitive) are complete --
+the FSM now runs map through writeback for feature mode. M4 (scale-out: per-phase model overrides,
+more languages, helm-qa handoff, package extraction) is next.
 
 ## Layout
 

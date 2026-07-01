@@ -6,6 +6,7 @@ export interface PlannedSlice {
   description: string;
   implRelPath: string;
   testRelPath: string;
+  functionName: string;
 }
 
 export interface PlanSlicesOptions {
@@ -26,8 +27,10 @@ function buildPlanPrompt(opts: PlanSlicesOptions): string {
     `In-scope files: ${opts.scopeReport.inScope.join(", ") || "(none yet -- new files may be needed)"}`,
     "",
     "Respond with ONLY a JSON array, no prose, no markdown fences. Each element must be exactly:",
-    '{"description": string, "implRelPath": string, "testRelPath": string}',
-    "implRelPath and testRelPath are relative paths inside the target Python repo.",
+    '{"description": string, "implRelPath": string, "testRelPath": string, "functionName": string}',
+    "implRelPath and testRelPath are relative paths inside the target Python repo. functionName is the",
+    'exact name of the single Python function this slice implements or modifies (a valid Python',
+    'identifier, e.g. "add" or "reverse_words") -- used downstream for mutation testing.',
   ].join("\n");
 }
 
@@ -46,7 +49,8 @@ function isPlannedSlice(value: unknown): value is PlannedSlice {
   return (
     typeof record.description === "string" &&
     typeof record.implRelPath === "string" &&
-    typeof record.testRelPath === "string"
+    typeof record.testRelPath === "string" &&
+    typeof record.functionName === "string"
   );
 }
 

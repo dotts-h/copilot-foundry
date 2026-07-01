@@ -24,9 +24,10 @@ export function createTddMcpServer(deps: { artifactRoot: string }): McpServer {
         hitl: z.enum(["plan-only", "auto"]).default("auto"),
         targetHint: z.string().optional(),
         maxRepairIterations: z.number().int().min(1).max(10).default(5),
+        commit: z.boolean().default(false),
       },
     },
-    async ({ targetDir, venvDir, featureDescription, scope, hitl, targetHint, maxRepairIterations }) => {
+    async ({ targetDir, venvDir, featureDescription, scope, hitl, targetHint, maxRepairIterations, commit }) => {
       const runId = randomUUID();
       const startedAt = new Date().toISOString();
       await writeRunState(deps.artifactRoot, runId, {
@@ -46,6 +47,7 @@ export function createTddMcpServer(deps: { artifactRoot: string }): McpServer {
         targetHint,
         models: DEFAULT_MODELS,
         maxRepairIterations,
+        commit,
       };
 
       runFeature(spec, new CursorBackend(), deps.artifactRoot, runId).catch(async (err) => {

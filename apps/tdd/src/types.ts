@@ -48,6 +48,7 @@ export interface FeatureRunSpec {
   targetHint?: string;
   models: ModelRouting;
   maxRepairIterations: number;
+  commit: boolean;
 }
 
 const SUPPORTED_SCOPES: WorkflowScope[] = ["node", "module", "package", "repo"];
