@@ -54,10 +54,12 @@ describe.skipIf(!RUN_LIVE)("runFeature (live E2E, feature mode)", () => {
     const ledger = await runFeature(spec, new CursorBackend(), artifactRoot, "run-feature-live");
 
     expect(ledger.slices.length).toBeGreaterThanOrEqual(1);
-    expect(ledger.status).toBe("completed");
+    expect(ledger.status).toBe("accepted");
     for (const sliceResult of ledger.sliceResults) {
       expect(sliceResult.redGatePassed).toBe(true);
       expect(sliceResult.greenGatePassed).toBe(true);
     }
+    expect(ledger.verifyResult?.passed).toBe(true);
+    expect(ledger.acceptanceLedger?.overallAccepted).toBe(true);
   }, 900_000);
 });

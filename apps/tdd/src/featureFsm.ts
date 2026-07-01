@@ -1,6 +1,7 @@
 import { writeArtifact } from "./artifacts/vault.js";
 import type { Backend } from "./backend/types.js";
 import { runCommand } from "./exec.js";
+import { attemptRefactor } from "./gates/refactorGate.js";
 import { classifyRedOutcome, type RedOutcome } from "./gates/redGate.js";
 import { runGreenWithRepair } from "./gates/greenGate.js";
 import type { RedLintResult } from "./gates/redLinter.js";
@@ -9,6 +10,9 @@ import { mapRepo, type RepoMap } from "./phases/map.js";
 import { runBaseline, runPytestVerbose, type BaselineReport } from "./phases/baseline.js";
 import { computeScope, type ScopeReport } from "./phases/scope.js";
 import { planSlices, type PlannedSlice } from "./phases/plan.js";
+import { buildCheckpoint } from "./phases/checkpoint.js";
+import { runVerifyLadder, type VerifyResult } from "./phases/verify.js";
+import { buildAcceptanceLedger, type AcceptanceLedger } from "./phases/accept.js";
 import { writeRunState } from "./runStore.js";
 import { validateFeatureRunSpec, type FeatureRunSpec } from "./types.js";
 
@@ -21,10 +25,12 @@ export interface SliceExecutionResult {
   greenIterationsUsed: number;
   greenEscalated: boolean;
   diffGuardViolated: boolean;
+  refactorApplied: boolean;
 }
 
 export type FeatureRunStatus =
-  | "completed"
+  | "accepted"
+  | "verify_failed"
   | "completed_with_regressions"
   | "plan_only"
   | "red_gate_failed"
@@ -38,6 +44,8 @@ export interface FeatureLedger {
   scopeReport: ScopeReport;
   slices: PlannedSlice[];
   sliceResults: SliceExecutionResult[];
+  verifyResult: VerifyResult | null;
+  acceptanceLedger: AcceptanceLedger | null;
   status: FeatureRunStatus;
   completedAt: string;
 }
@@ -67,6 +75,15 @@ function buildGreenPrompt(slice: PlannedSlice, lastFailureOutput: string | undef
   return `${base}\n\nThe previous attempt failed with:\n${lastFailureOutput}`;
 }
 
+function buildRefactorPrompt(slice: PlannedSlice): string {
+  return (
+    `The test at ${slice.testRelPath} is currently passing against ${slice.implRelPath}. Mechanically ` +
+    "clean up the implementation (naming, redundant code, obvious simplifications) WITHOUT changing " +
+    `its behavior. Do NOT modify ${slice.testRelPath} under any circumstances -- it is locked and any ` +
+    "attempt to edit it will be reverted."
+  );
+}
+
 const SAFE_REL_PATH = /^[\w][\w./-]*$/;
 
 function validateSlicePaths(slices: PlannedSlice[]): void {
@@ -87,6 +104,11 @@ async function commitAll(dir: string, message: string): Promise<void> {
   if (result.exitCode !== 0 && !/nothing to commit/.test(result.stdout + result.stderr)) {
     throw new Error(`commitAll: git commit failed (exit ${result.exitCode}): ${result.stdout}${result.stderr}`);
   }
+}
+
+async function currentHead(dir: string): Promise<string> {
+  const result = await runCommand("git", ["rev-parse", "HEAD"], { cwd: dir, timeoutMs: 15_000 });
+  return result.stdout.trim();
 }
 
 async function markProgress(
@@ -138,7 +160,12 @@ export async function runFeature(
   validateSlicePaths(slices);
   await writeArtifact(artifactRoot, runId, "plan", slices);
 
-  const finish = async (status: FeatureRunStatus, sliceResults: SliceExecutionResult[]): Promise<FeatureLedger> => {
+  const finish = async (
+    status: FeatureRunStatus,
+    sliceResults: SliceExecutionResult[],
+    verifyResult: VerifyResult | null,
+    acceptanceLedger: AcceptanceLedger | null,
+  ): Promise<FeatureLedger> => {
     const ledger: FeatureLedger = {
       runId,
       mode: "feature",
@@ -147,6 +174,8 @@ export async function runFeature(
       scopeReport,
       slices,
       sliceResults,
+      verifyResult,
+      acceptanceLedger,
       status,
       completedAt: new Date().toISOString(),
     };
@@ -161,11 +190,10 @@ export async function runFeature(
   };
 
   if (spec.hitl === "plan-only") {
-    return finish("plan_only", []);
+    return finish("plan_only", [], null, null);
   }
 
   const sliceResults: SliceExecutionResult[] = [];
-
   let knownGoodPaths = new Set(
     baseline.tests.filter((t) => t.outcome === "passed").map((t) => t.nodeId.split("::")[0]),
   );
@@ -174,6 +202,8 @@ export async function runFeature(
   for (let i = 0; i < slices.length; i++) {
     const slice = slices[i];
     await markProgress(artifactRoot, runId, startedAt, "slice", { sliceIndex: i, totalSlices: slices.length });
+
+    const sliceStartCommit = await currentHead(spec.targetDir);
 
     await writeLeashConfig(spec.targetDir, [slice.testRelPath]);
     await backend.runPhase({ cwd: spec.targetDir, model: spec.models.red, prompt: buildRedPrompt(slice) });
@@ -196,8 +226,9 @@ export async function runFeature(
         greenIterationsUsed: 0,
         greenEscalated: false,
         diffGuardViolated: false,
+        refactorApplied: false,
       });
-      return finish("red_gate_failed", sliceResults);
+      return finish("red_gate_failed", sliceResults, null, null);
     }
 
     const greenResult = await runGreenWithRepair({
@@ -211,22 +242,51 @@ export async function runFeature(
       buildPrompt: (lastFailure) => buildGreenPrompt(slice, lastFailure),
     });
 
+    if (!greenResult.passed) {
+      sliceResults.push({
+        slice,
+        redOutcome: redResult.outcome,
+        redGatePassed: true,
+        redLint: redResult.lint,
+        greenGatePassed: false,
+        greenIterationsUsed: greenResult.iterationsUsed,
+        greenEscalated: greenResult.escalated,
+        diffGuardViolated: greenResult.diffGuardViolated,
+        refactorApplied: false,
+      });
+      return finish("green_gate_exhausted", sliceResults, null, null);
+    }
+
+    await commitAll(spec.targetDir, `green: ${runId} slice ${i}`);
+
+    const refactorResult = await attemptRefactor({
+      backend,
+      targetDir: spec.targetDir,
+      venvDir: spec.venvDir,
+      implRelPath: slice.implRelPath,
+      testRelPath: slice.testRelPath,
+      refactorModel: spec.models.green,
+      buildPrompt: () => buildRefactorPrompt(slice),
+    });
+
+    if (refactorResult.applied) {
+      await commitAll(spec.targetDir, `refactor: ${runId} slice ${i}`);
+    }
+
     sliceResults.push({
       slice,
       redOutcome: redResult.outcome,
       redGatePassed: true,
       redLint: redResult.lint,
-      greenGatePassed: greenResult.passed,
+      greenGatePassed: true,
       greenIterationsUsed: greenResult.iterationsUsed,
       greenEscalated: greenResult.escalated,
       diffGuardViolated: greenResult.diffGuardViolated,
+      refactorApplied: refactorResult.applied,
     });
 
-    if (!greenResult.passed) {
-      return finish("green_gate_exhausted", sliceResults);
-    }
-
-    await commitAll(spec.targetDir, `green: ${runId} slice ${i}`);
+    const checkpoint = await buildCheckpoint(spec.targetDir, i, sliceStartCommit);
+    await writeArtifact(artifactRoot, runId, `checkpoint-slice-${i}`, checkpoint);
 
     const postSliceScan = await runPytestVerbose(spec.venvDir, spec.targetDir);
     const postSliceFailingPaths = new Set(
@@ -243,5 +303,38 @@ export async function runFeature(
     knownGoodPaths = new Set([...knownGoodPaths, ...postSlicePassingPaths]);
   }
 
-  return finish(anyRegressionDetected ? "completed_with_regressions" : "completed", sliceResults);
+  if (anyRegressionDetected) {
+    return finish("completed_with_regressions", sliceResults, null, null);
+  }
+
+  const touchedTestPaths = sliceResults.map((r) => r.slice.testRelPath);
+  const verifyResult = await runVerifyLadder({
+    venvDir: spec.venvDir,
+    targetDir: spec.targetDir,
+    touchedTestPaths,
+    newTestPaths: touchedTestPaths,
+    repoMap,
+    scopeReport,
+  });
+  await writeArtifact(artifactRoot, runId, "verify", verifyResult);
+
+  if (!verifyResult.passed) {
+    return finish("verify_failed", sliceResults, verifyResult, null);
+  }
+
+  const acceptanceLedger = buildAcceptanceLedger(
+    runId,
+    sliceResults.map((r) => ({
+      description: r.slice.description,
+      implRelPath: r.slice.implRelPath,
+      testRelPath: r.slice.testRelPath,
+      redGatePassed: r.redGatePassed,
+      greenGatePassed: r.greenGatePassed,
+      refactorApplied: r.refactorApplied,
+    })),
+    verifyResult.passed,
+  );
+  await writeArtifact(artifactRoot, runId, "accept", acceptanceLedger);
+
+  return finish("accepted", sliceResults, verifyResult, acceptanceLedger);
 }

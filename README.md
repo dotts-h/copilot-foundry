@@ -8,9 +8,11 @@ completion gate that closes the triangulation hole plain TDD leaves open.
 
 ## Status
 
-Early build. `apps/tdd` (helm-tdd) M0 (proving skeleton) and M1 (walking skeleton: feature-mode
-map/baseline/scope/plan pipeline, formalized RED/GREEN gates, RED linter, disk-backed async runs)
-are complete. M2 (refactor + verify) is next.
+Early build. `apps/tdd` (helm-tdd) M0 (proving skeleton), M1 (walking skeleton: feature-mode
+map/baseline/scope/plan pipeline, formalized RED/GREEN gates, RED linter, disk-backed async runs),
+and M2 (REFACTOR ratchet, per-slice CHECKPOINT patches, the VERIFY ladder, and an ACCEPT
+traceability ledger -- the FSM now runs map through accept) are complete. M3 (harden/bugfix/legacy)
+is next.
 
 ## Layout
 
