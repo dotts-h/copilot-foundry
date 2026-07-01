@@ -67,6 +67,9 @@ function buildRedPrompt(slice: PlannedSlice): string {
   return (
     `Write ONLY a failing pytest test at ${slice.testRelPath} for this behavior: ${slice.description}. ` +
     `The implementation lives at ${slice.implRelPath} and does not yet satisfy this behavior. ` +
+    "Include at least two assertions with different, non-trivially-related expected values (not just one " +
+    "example) so the test actually triangulates the behavior and cannot be satisfied by a function that " +
+    "always returns a single constant. " +
     "Do NOT implement or modify the implementation file. Do not create or modify any other file."
   );
 }
