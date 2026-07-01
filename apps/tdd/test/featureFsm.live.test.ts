@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { runCommand } from "../src/exec.js";
 import { CursorBackend } from "../src/backend/cursorBackend.js";
 import { runFeature } from "../src/featureFsm.js";
-import { DEFAULT_MODELS, type FeatureRunSpec } from "../src/types.js";
+import { DEFAULT_MODELS_BY_BACKEND, type FeatureRunSpec } from "../src/types.js";
 
 const RUN_LIVE = process.env.RUN_CURSOR_E2E === "1";
 const FIXTURE = join(process.cwd(), "fixtures", "strings-kata");
@@ -47,7 +47,7 @@ describe.skipIf(!RUN_LIVE)("runFeature (live E2E, feature mode)", () => {
         "Implement two string utilities in strings_kata.py: reverse_words(s), which reverses the order " +
         "of whitespace-separated words in s, and is_palindrome(s), which returns True iff s reads the " +
         "same forwards and backwards. Plan them as two separate slices.",
-      models: DEFAULT_MODELS,
+      models: DEFAULT_MODELS_BY_BACKEND.cursor,
       maxRepairIterations: 5,
       commit: false,
     };

@@ -22,6 +22,9 @@ function buildPlanPrompt(opts: PlanSlicesOptions): string {
   return [
     "You are the planning phase of a TDD workflow. Decompose the feature below into an ORDERED list of",
     "small, independently-testable vertical slices. Each slice implements one behavior in one function.",
+    "Do NOT split a single function's input domain (e.g. positive/negative/zero cases) across multiple",
+    "slices -- those cases belong as multiple assertions inside ONE slice's test. A feature describing one",
+    "small function is exactly ONE slice; use multiple slices only for genuinely distinct functions or behaviors.",
     "",
     `Feature: ${opts.featureDescription}`,
     `In-scope files: ${opts.scopeReport.inScope.join(", ") || "(none yet -- new files may be needed)"}`,

@@ -43,6 +43,27 @@ describe("planSlices", () => {
     expect(backend.calls[0].model).toBe("fake-plan");
   });
 
+  it("forbids splitting a single function's input domain across multiple slices in the prompt", async () => {
+    const backend = new ScriptedBackend([
+      () => ({
+        resultText: JSON.stringify([
+          { description: "a", implRelPath: "x.py", testRelPath: "test_x.py", functionName: "a" },
+        ]),
+      }),
+    ]);
+
+    await planSlices({
+      backend,
+      model: "fake-plan",
+      targetDir: "/tmp/whatever",
+      featureDescription: "x",
+      repoMap: EMPTY_MAP,
+      scopeReport: REPO_SCOPE,
+    });
+
+    expect(backend.calls[0].prompt).toContain("Do NOT split a single function's input domain");
+  });
+
   it("tolerates surrounding prose/markdown fences around the JSON array", async () => {
     const backend = new ScriptedBackend([
       () => ({

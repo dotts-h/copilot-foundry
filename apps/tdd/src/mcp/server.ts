@@ -2,10 +2,16 @@ import { randomUUID } from "node:crypto";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { readArtifact } from "../artifacts/vault.js";
+import type { Backend } from "../backend/types.js";
+import { ClaudeBackend } from "../backend/claudeBackend.js";
 import { CursorBackend } from "../backend/cursorBackend.js";
 import { runFeature, type FeatureLedger } from "../featureFsm.js";
 import { readRunState, writeRunState } from "../runStore.js";
-import { DEFAULT_MODELS, type FeatureRunSpec, type ModelRouting } from "../types.js";
+import { resolveModels, type BackendKind, type FeatureRunSpec } from "../types.js";
+
+export function createBackend(kind: BackendKind): Backend {
+  return kind === "cursor" ? new CursorBackend() : new ClaudeBackend();
+}
 
 export function createTddMcpServer(deps: { artifactRoot: string }): McpServer {
   const server = new McpServer({ name: "helm-tdd", version: "0.1.0" });
@@ -15,7 +21,8 @@ export function createTddMcpServer(deps: { artifactRoot: string }): McpServer {
     {
       description:
         "Start a helm-tdd feature-mode run (map->baseline->scope->plan->RED/GREEN slice loop). " +
-        "Returns immediately with a runId; poll tdd_workflow_status/tdd_workflow_result.",
+        "Returns immediately with a runId; poll tdd_workflow_status/tdd_workflow_result. " +
+        "Defaults to the Claude Agent SDK on Sonnet 5 as the backend.",
       inputSchema: {
         targetDir: z.string(),
         venvDir: z.string(),
@@ -25,6 +32,7 @@ export function createTddMcpServer(deps: { artifactRoot: string }): McpServer {
         targetHint: z.string().optional(),
         maxRepairIterations: z.number().int().min(1).max(10).default(5),
         commit: z.boolean().default(false),
+        backend: z.enum(["claude", "cursor"]).default("claude"),
         models: z
           .object({
             plan: z.string().optional(),
@@ -44,6 +52,7 @@ export function createTddMcpServer(deps: { artifactRoot: string }): McpServer {
       targetHint,
       maxRepairIterations,
       commit,
+      backend,
       models,
     }) => {
       const runId = randomUUID();
@@ -55,12 +64,7 @@ export function createTddMcpServer(deps: { artifactRoot: string }): McpServer {
         updatedAt: startedAt,
       });
 
-      const resolvedModels: ModelRouting = {
-        plan: models?.plan ?? DEFAULT_MODELS.plan,
-        red: models?.red ?? DEFAULT_MODELS.red,
-        green: models?.green ?? DEFAULT_MODELS.green,
-        escalation: models?.escalation ?? DEFAULT_MODELS.escalation,
-      };
+      const resolvedModels = resolveModels(backend, models);
 
       const spec: FeatureRunSpec = {
         mode: "feature",
@@ -75,7 +79,7 @@ export function createTddMcpServer(deps: { artifactRoot: string }): McpServer {
         commit,
       };
 
-      runFeature(spec, new CursorBackend(), deps.artifactRoot, runId).catch(async (err) => {
+      runFeature(spec, createBackend(backend), deps.artifactRoot, runId).catch(async (err) => {
         await writeRunState(deps.artifactRoot, runId, {
           status: "error",
           progress: { phase: "error" },

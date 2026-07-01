@@ -66,6 +66,7 @@ export async function attemptRefactor(opts: RefactorAttemptOptions): Promise<Ref
     cwd: opts.targetDir,
     model: opts.refactorModel,
     prompt: opts.buildPrompt(),
+    lockedPaths: [opts.testRelPath],
   });
 
   const guard = await checkDiffGuard(opts.targetDir, [opts.testRelPath]);

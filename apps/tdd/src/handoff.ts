@@ -1,6 +1,6 @@
 import type { Backend } from "./backend/types.js";
 import { runFeature, type FeatureLedger } from "./featureFsm.js";
-import { DEFAULT_MODELS, validateFeatureRunSpec, type FeatureRunSpec } from "./types.js";
+import { DEFAULT_MODELS_BY_BACKEND, validateFeatureRunSpec, type FeatureRunSpec } from "./types.js";
 
 export interface QaHandoffRequest {
   targetDir: string;
@@ -28,7 +28,7 @@ export async function handoffFromQa(
     hitl: "auto",
     featureDescription: request.featureDescription,
     targetHint: request.targetHint,
-    models: DEFAULT_MODELS,
+    models: DEFAULT_MODELS_BY_BACKEND.claude,
     maxRepairIterations: 5,
     commit: request.commit ?? false,
   };

@@ -2,8 +2,8 @@
 
 A vendor-neutral TDD workflow for coding agents. `helm-tdd` runs `RED → GREEN → REFACTOR`
 as a finite-state machine that owns the loop, exposes a single async entry point to a
-cockpit (Claude Code), and executes phases on a swappable backend (Cursor/Composer 2.5 by
-default, Claude Agent SDK as fallback) behind a structural leash and a constant-mutant
+cockpit (Claude Code), and executes phases on a swappable backend (Claude Agent SDK/Sonnet 5 by
+default, Cursor/Composer 2.5 as the alternative) behind a structural leash and a constant-mutant
 completion gate that closes the triangulation hole plain TDD leaves open.
 
 ## Status
@@ -19,6 +19,11 @@ big feature-mode pipeline (currently Python-only end-to-end; `packages/core` pro
 generalizes, not yet wired into `runFeature`) remain standalone primitives for a future milestone,
 not yet integrated into the main pipeline -- deliberately, matching this project's own "prove
 minimally, generalize only when a second real consumer needs it" discipline throughout M0-M4.
+
+M5 makes the Claude Agent SDK (Sonnet 5, subscription auth) the default backend behind a hard
+PreToolUse leash; leash enforcement now lives behind the Backend seam; runs execute on isolated
+worktrees and deliver a `helm-tdd/<runId>` branch; and `skills/tdd/SKILL.md` is the cockpit
+router (the Layout section's `skills/` line is now real).
 
 ## Layout
 

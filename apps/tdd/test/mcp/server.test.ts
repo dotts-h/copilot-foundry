@@ -2,8 +2,10 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createTddMcpServer } from "../../src/mcp/server.js";
-import { DEFAULT_MODELS } from "../../src/types.js";
+import { createBackend, createTddMcpServer } from "../../src/mcp/server.js";
+import { ClaudeBackend } from "../../src/backend/claudeBackend.js";
+import { CursorBackend } from "../../src/backend/cursorBackend.js";
+import { DEFAULT_MODELS_BY_BACKEND } from "../../src/types.js";
 
 let capturedSpec: unknown;
 
@@ -50,6 +52,7 @@ const BASE_ARGS = {
   scope: "repo" as const,
   hitl: "auto" as const,
   maxRepairIterations: 5,
+  backend: "claude" as const,
 };
 
 describe("tdd MCP server (feature mode)", () => {
@@ -126,8 +129,13 @@ describe("tdd MCP server (feature mode)", () => {
     const models = (capturedSpec as { models: { plan: string; red: string; green: string; escalation: string } })
       .models;
     expect(models.red).toBe("custom-red-model");
-    expect(models.plan).toBe(DEFAULT_MODELS.plan);
-    expect(models.green).toBe(DEFAULT_MODELS.green);
-    expect(models.escalation).toBe(DEFAULT_MODELS.escalation);
+    expect(models.plan).toBe(DEFAULT_MODELS_BY_BACKEND.claude.plan);
+    expect(models.green).toBe(DEFAULT_MODELS_BY_BACKEND.claude.green);
+    expect(models.escalation).toBe(DEFAULT_MODELS_BY_BACKEND.claude.escalation);
+  });
+
+  it("createBackend maps backend kinds to the matching Backend implementation", () => {
+    expect(createBackend("claude")).toBeInstanceOf(ClaudeBackend);
+    expect(createBackend("cursor")).toBeInstanceOf(CursorBackend);
   });
 });

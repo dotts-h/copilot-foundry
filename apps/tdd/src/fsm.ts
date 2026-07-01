@@ -1,10 +1,10 @@
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { writeArtifact } from "./artifacts/vault.js";
+import { writeLeashConfig } from "./backend/cursorLeash.js";
 import type { Backend } from "./backend/types.js";
 import { runCommand } from "./exec.js";
 import { checkDiffGuard, revertPaths } from "./gates/diffGuard.js";
-import { writeLeashConfig } from "./gates/leash.js";
 import { runPytest } from "./pythonRunner.js";
 import type { RunSpec, SliceLedger } from "./types.js";
 

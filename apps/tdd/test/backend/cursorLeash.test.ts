@@ -1,9 +1,9 @@
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { removeLeashConfig, writeLeashConfig } from "../../src/backend/cursorLeash.js";
 import { runCommand } from "../../src/exec.js";
-import { writeLeashConfig } from "../../src/gates/leash.js";
 
 describe("leash config generator", () => {
   let dir: string;
@@ -48,5 +48,27 @@ describe("leash config generator", () => {
     const { stdout } = await runCommand("bash", ["-c", `printf '%s' '${input}' | '${scriptPath}'`]);
     const parsed = JSON.parse(stdout);
     expect(parsed.permission).toBe("allow");
+  });
+
+  it("the generated script allows a command naming a file that merely embeds a locked filename", async () => {
+    await writeLeashConfig(dir, ["add_kata.py"]);
+    const scriptPath = join(dir, ".cursor", "hooks", "deny-locked.sh");
+    const allowInput = JSON.stringify({ command: "pytest test_add_kata.py" });
+    const { stdout: allowStdout } = await runCommand("bash", ["-c", `printf '%s' '${allowInput}' | '${scriptPath}'`]);
+    expect(JSON.parse(allowStdout).permission).toBe("allow");
+
+    const denyInput = JSON.stringify({ command: "pytest add_kata.py" });
+    const { stdout: denyStdout } = await runCommand("bash", ["-c", `printf '%s' '${denyInput}' | '${scriptPath}'`]);
+    expect(JSON.parse(denyStdout).permission).toBe("deny");
+  });
+
+  it("removeLeashConfig deletes only the files we wrote and leaves a pre-existing .cursor dir intact", async () => {
+    mkdirSync(join(dir, ".cursor"), { recursive: true });
+    writeFileSync(join(dir, ".cursor", "user-settings.json"), "{}");
+    await writeLeashConfig(dir, ["locked.py"]);
+    await removeLeashConfig(dir);
+    expect(existsSync(join(dir, ".cursor", "hooks.json"))).toBe(false);
+    expect(existsSync(join(dir, ".cursor", "hooks"))).toBe(false);
+    expect(existsSync(join(dir, ".cursor", "user-settings.json"))).toBe(true); // untouched
   });
 });
