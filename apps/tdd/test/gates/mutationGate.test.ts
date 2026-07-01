@@ -93,4 +93,28 @@ describe("checkConstantMutantGeneric", () => {
     expect(result.attempted).toBe(false);
     expect(result.mutantSurvived).toBeNull();
   });
+
+  it("does not throw when the target module prints to stdout on import", async () => {
+    dir = mkdtempSync(join(tmpdir(), "mutation-gate-"));
+    writeFileSync(
+      join(dir, "add_kata.py"),
+      'print("some debug output")\ndef add(a, b):\n    return a + b\n',
+    );
+    writeFileSync(
+      join(dir, "test_add_kata.py"),
+      "from add_kata import add\n\ndef test_add():\n    assert add(2, 3) == 5\n",
+    );
+
+    const result = await checkConstantMutantGeneric({
+      workDir: dir,
+      venvDir: FIXTURE_VENV,
+      implRelPath: "add_kata.py",
+      functionName: "add",
+      testRelPath: "test_add_kata.py",
+    });
+
+    expect(result.attempted).toBe(true);
+    expect(result.mutantSurvived).toBe(true);
+    expect(result.constantUsed).toBe(5);
+  });
 });

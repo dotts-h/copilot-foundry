@@ -87,7 +87,27 @@ export async function checkConstantMutantGeneric(opts: {
     };
   }
 
-  const parsed = JSON.parse(inspectResult.stdout) as InspectFound | InspectNotFound;
+  const parsed = inspectResult.stdout
+    .split("\n")
+    .filter((line) => line.trim().startsWith("{"))
+    .map((line) => {
+      try {
+        return JSON.parse(line) as InspectFound | InspectNotFound;
+      } catch {
+        return null;
+      }
+    })
+    .filter((value): value is InspectFound | InspectNotFound => value !== null && typeof value.found === "boolean")
+    .at(-1);
+
+  if (!parsed) {
+    return {
+      attempted: false,
+      mutantSurvived: null,
+      constantUsed: undefined,
+      reason: `mutation inspection failed: no JSON result line found in python output.\nstdout:\n${inspectResult.stdout}\nstderr:\n${inspectResult.stderr}`,
+    };
+  }
 
   if (!parsed.found) {
     return {
