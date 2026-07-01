@@ -31,12 +31,32 @@ export interface ModelRouting {
   escalation: string;
 }
 
-export const DEFAULT_MODELS: ModelRouting = {
-  plan: "claude-sonnet-5-thinking-medium",
-  red: "claude-sonnet-5-thinking-medium",
-  green: "composer-2.5-fast",
-  escalation: "claude-sonnet-5-thinking-medium",
+export type BackendKind = "claude" | "cursor";
+
+export const DEFAULT_MODELS_BY_BACKEND: Record<BackendKind, ModelRouting> = {
+  claude: {
+    plan: "claude-sonnet-5",
+    red: "claude-sonnet-5",
+    green: "claude-sonnet-5",
+    escalation: "claude-sonnet-5",
+  },
+  cursor: {
+    plan: "claude-sonnet-5-thinking-medium",
+    red: "claude-sonnet-5-thinking-medium",
+    green: "composer-2.5-fast",
+    escalation: "claude-sonnet-5-thinking-medium",
+  },
 };
+
+export function resolveModels(kind: BackendKind, overrides?: Partial<ModelRouting>): ModelRouting {
+  const defaults = DEFAULT_MODELS_BY_BACKEND[kind];
+  return {
+    plan: overrides?.plan ?? defaults.plan,
+    red: overrides?.red ?? defaults.red,
+    green: overrides?.green ?? defaults.green,
+    escalation: overrides?.escalation ?? defaults.escalation,
+  };
+}
 
 export interface FeatureRunSpec {
   mode: WorkflowMode;

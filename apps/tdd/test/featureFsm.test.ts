@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { runCommand } from "../src/exec.js";
 import { runFeature } from "../src/featureFsm.js";
-import { DEFAULT_MODELS, type FeatureRunSpec } from "../src/types.js";
+import { DEFAULT_MODELS_BY_BACKEND, type FeatureRunSpec } from "../src/types.js";
 import { ScriptedBackend, writeImpl } from "./helpers/fakeBackend.js";
 
 const FIXTURE_VENV = join(process.cwd(), "fixtures", "add-kata", ".venv");
@@ -28,7 +28,7 @@ function baseSpec(overrides: Partial<FeatureRunSpec> = {}): FeatureRunSpec {
     scope: "repo",
     hitl: "auto",
     featureDescription: "implement add",
-    models: DEFAULT_MODELS,
+    models: DEFAULT_MODELS_BY_BACKEND.claude,
     maxRepairIterations: 3,
     commit: false,
     ...overrides,
