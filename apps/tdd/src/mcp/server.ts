@@ -1,56 +1,62 @@
 import { randomUUID } from "node:crypto";
-import { join } from "node:path";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
+import { readArtifact } from "../artifacts/vault.js";
 import { CursorBackend } from "../backend/cursorBackend.js";
-import { runSlice } from "../fsm.js";
-import type { RunSpec, SliceLedger } from "../types.js";
-
-interface RunState {
-  status: "running" | "done" | "error";
-  ledger?: SliceLedger;
-  error?: string;
-}
+import { runFeature, type FeatureLedger } from "../featureFsm.js";
+import { readRunState, writeRunState } from "../runStore.js";
+import { DEFAULT_MODELS, type FeatureRunSpec } from "../types.js";
 
 export function createTddMcpServer(deps: { artifactRoot: string }): McpServer {
-  const server = new McpServer({ name: "helm-tdd-m0", version: "0.0.0" });
-  const runs = new Map<string, RunState>();
-
-  function buildRunSpec(targetDir: string): RunSpec {
-    return {
-      targetDir,
-      venvDir: join(import.meta.dirname, "..", "..", "fixtures", "add-kata", ".venv"),
-      redModel: "claude-sonnet-5-thinking-medium",
-      greenModel: "composer-2.5-fast",
-      implRelPath: "add_kata.py",
-      testRelPath: "test_add_kata.py",
-      redPrompt:
-        "Write ONLY a failing pytest test at test_add_kata.py for a function add(a, b) in add_kata.py " +
-        "that should return a + b (e.g. assert add(2, 3) == 5). Do NOT implement or modify add_kata.py. " +
-        "Do not create or modify any other file.",
-      greenPrompt:
-        "The test at test_add_kata.py is currently failing. Make it pass with the minimal correct " +
-        "implementation of add in add_kata.py. Do NOT modify test_add_kata.py under any circumstances " +
-        "-- it is locked and any attempt to edit it will be reverted and the slice will fail.",
-    };
-  }
+  const server = new McpServer({ name: "helm-tdd", version: "0.1.0" });
 
   server.registerTool(
     "tdd_workflow_start",
     {
       description:
-        "Start a helm-tdd RED->GREEN slice run. Returns immediately with a runId; " +
-        "poll tdd_workflow_status/tdd_workflow_result.",
-      inputSchema: { targetDir: z.string() },
+        "Start a helm-tdd feature-mode run (map->baseline->scope->plan->RED/GREEN slice loop). " +
+        "Returns immediately with a runId; poll tdd_workflow_status/tdd_workflow_result.",
+      inputSchema: {
+        targetDir: z.string(),
+        venvDir: z.string(),
+        featureDescription: z.string(),
+        scope: z.enum(["node", "module", "package", "repo"]).default("repo"),
+        hitl: z.enum(["plan-only", "auto"]).default("auto"),
+        targetHint: z.string().optional(),
+        maxRepairIterations: z.number().int().min(1).max(10).default(5),
+      },
     },
-    async ({ targetDir }) => {
+    async ({ targetDir, venvDir, featureDescription, scope, hitl, targetHint, maxRepairIterations }) => {
       const runId = randomUUID();
-      runs.set(runId, { status: "running" });
+      const startedAt = new Date().toISOString();
+      await writeRunState(deps.artifactRoot, runId, {
+        status: "running",
+        progress: { phase: "map" },
+        startedAt,
+        updatedAt: startedAt,
+      });
 
-      const spec = buildRunSpec(targetDir);
-      runSlice(spec, new CursorBackend(), deps.artifactRoot, runId)
-        .then((ledger) => runs.set(runId, { status: "done", ledger }))
-        .catch((err) => runs.set(runId, { status: "error", error: String(err) }));
+      const spec: FeatureRunSpec = {
+        mode: "feature",
+        targetDir,
+        venvDir,
+        scope,
+        hitl,
+        featureDescription,
+        targetHint,
+        models: DEFAULT_MODELS,
+        maxRepairIterations,
+      };
+
+      runFeature(spec, new CursorBackend(), deps.artifactRoot, runId).catch(async (err) => {
+        await writeRunState(deps.artifactRoot, runId, {
+          status: "error",
+          progress: { phase: "error" },
+          error: String(err),
+          startedAt,
+          updatedAt: new Date().toISOString(),
+        });
+      });
 
       return { content: [{ type: "text" as const, text: JSON.stringify({ runId }) }] };
     },
@@ -63,10 +69,8 @@ export function createTddMcpServer(deps: { artifactRoot: string }): McpServer {
       inputSchema: { runId: z.string() },
     },
     async ({ runId }) => {
-      const entry = runs.get(runId);
-      return {
-        content: [{ type: "text" as const, text: JSON.stringify({ status: entry?.status ?? "unknown" }) }],
-      };
+      const state = await readRunState(deps.artifactRoot, runId);
+      return { content: [{ type: "text" as const, text: JSON.stringify(state ?? { status: "unknown" }) }] };
     },
   );
 
@@ -77,20 +81,17 @@ export function createTddMcpServer(deps: { artifactRoot: string }): McpServer {
       inputSchema: { runId: z.string() },
     },
     async ({ runId }) => {
-      const entry = runs.get(runId);
-      if (!entry || entry.status === "running") {
-        return { content: [{ type: "text" as const, text: JSON.stringify({ status: "running" }) }] };
+      const state = await readRunState(deps.artifactRoot, runId);
+      if (!state || state.status === "running") {
+        return { content: [{ type: "text" as const, text: JSON.stringify({ status: state?.status ?? "unknown" }) }] };
       }
-      if (entry.status === "error") {
+      if (state.status === "error") {
         return {
-          content: [{ type: "text" as const, text: JSON.stringify({ status: "error", error: entry.error }) }],
+          content: [{ type: "text" as const, text: JSON.stringify({ status: "error", error: state.error }) }],
         };
       }
-      return {
-        content: [
-          { type: "text" as const, text: JSON.stringify({ status: "done", ledger: entry.ledger }) },
-        ],
-      };
+      const ledger = await readArtifact<FeatureLedger>(deps.artifactRoot, runId, "featureLedger");
+      return { content: [{ type: "text" as const, text: JSON.stringify({ status: "done", ledger }) }] };
     },
   );
 
