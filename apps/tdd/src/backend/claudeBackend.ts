@@ -20,6 +20,10 @@ export class ClaudeBackend implements Backend {
           maxTurns: MAX_TURNS,
           settingSources: [],
           permissionMode: "bypassPermissions",
+          // bypassPermissions alone silently no-ops tool execution in the SDK; this flag is
+          // required for it to take effect, and the PreToolUse deny hook still overrides it
+          // (verified live 2026-07-01).
+          allowDangerouslySkipPermissions: true,
           disallowedTools: ["WebFetch", "WebSearch"],
           abortController: controller,
           hooks: {
