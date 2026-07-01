@@ -7,6 +7,7 @@ export interface RunProgress {
   phase: string;
   sliceIndex?: number;
   totalSlices?: number;
+  branchName?: string;
 }
 
 export interface RunState {

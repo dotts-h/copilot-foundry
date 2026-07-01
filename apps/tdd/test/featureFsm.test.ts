@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -85,6 +85,14 @@ describe("runFeature", () => {
     expect(backend.calls[0].lockedPaths).toBeUndefined(); // plan
     expect(backend.calls[1].lockedPaths).toEqual(["add_kata.py"]); // RED locks impl
     expect(backend.calls[2].lockedPaths).toEqual(["test_add_kata.py"]); // GREEN locks test
+
+    expect(ledger.workspace.branchName).toBe("helm-tdd/run-feature-1");
+    const show = await runCommand("git", ["show", "helm-tdd/run-feature-1:add_kata.py"], { cwd: targetDir });
+    expect(show.stdout).toContain("return a + b");
+    const untouched = readFileSync(join(targetDir, "add_kata.py"), "utf8");
+    expect(untouched).toContain("NotImplementedError"); // user's checkout never mutated
+    const list = await runCommand("git", ["worktree", "list", "--porcelain"], { cwd: targetDir });
+    expect(list.stdout.match(/^worktree /gm)?.length).toBe(1); // worktree cleaned up
   });
 
   it("stops at plan and does not execute any slice when hitl is plan-only", async () => {
