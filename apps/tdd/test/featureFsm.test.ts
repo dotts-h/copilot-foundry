@@ -117,4 +117,34 @@ describe("runFeature", () => {
     expect(ledger.status).toBe("red_gate_failed");
     expect(ledger.sliceResults[0].redOutcome).toBe("already_green");
   });
+
+  it("reports green_gate_exhausted when the implementation never satisfies the test and escalation also fails", async () => {
+    targetDir = await seedTargetRepo();
+    artifactRoot = mkdtempSync(join(tmpdir(), "feature-fsm-artifacts-"));
+
+    const backend = new ScriptedBackend([
+      () => ({
+        resultText: JSON.stringify([
+          { description: "add(a, b) returns a + b", implRelPath: "add_kata.py", testRelPath: "test_add_kata.py" },
+        ]),
+      }),
+      async (opts) => {
+        writeFileSync(
+          join(opts.cwd, "test_add_kata.py"),
+          "from add_kata import add\n\ndef test_add():\n    assert add(2, 3) == 5\n",
+        );
+      },
+      async (opts) => writeImpl(opts.cwd, "add_kata.py", "def add(a, b):\n    return a - b\n"),
+    ]);
+
+    const ledger = await runFeature(
+      baseSpec({ targetDir, maxRepairIterations: 1 }),
+      backend,
+      artifactRoot,
+      "run-green-exhausted",
+    );
+
+    expect(ledger.status).toBe("green_gate_exhausted");
+    expect(ledger.sliceResults[0].greenGatePassed).toBe(false);
+  });
 });

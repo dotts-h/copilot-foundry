@@ -62,6 +62,14 @@ function buildGreenPrompt(slice: PlannedSlice, lastFailureOutput: string | undef
   return `${base}\n\nThe previous attempt failed with:\n${lastFailureOutput}`;
 }
 
+async function commitAll(dir: string, message: string): Promise<void> {
+  await runCommand("git", ["add", "-A"], { cwd: dir });
+  const result = await runCommand("git", ["commit", "-q", "-m", message], { cwd: dir });
+  if (result.exitCode !== 0 && !/nothing to commit/.test(result.stdout + result.stderr)) {
+    throw new Error(`commitAll: git commit failed (exit ${result.exitCode}): ${result.stdout}${result.stderr}`);
+  }
+}
+
 async function markProgress(
   artifactRoot: string,
   runId: string,
@@ -144,8 +152,7 @@ export async function runFeature(
 
     await writeLeashConfig(spec.targetDir, [slice.testRelPath]);
     await backend.runPhase({ cwd: spec.targetDir, model: spec.models.red, prompt: buildRedPrompt(slice) });
-    await runCommand("git", ["add", "-A"], { cwd: spec.targetDir });
-    await runCommand("git", ["commit", "-q", "-m", `red: ${runId} slice ${i}`], { cwd: spec.targetDir });
+    await commitAll(spec.targetDir, `red: ${runId} slice ${i}`);
 
     const redResult = await classifyRedOutcome({
       targetDir: spec.targetDir,
@@ -194,8 +201,7 @@ export async function runFeature(
       return finish("green_gate_exhausted", sliceResults);
     }
 
-    await runCommand("git", ["add", "-A"], { cwd: spec.targetDir });
-    await runCommand("git", ["commit", "-q", "-m", `green: ${runId} slice ${i}`], { cwd: spec.targetDir });
+    await commitAll(spec.targetDir, `green: ${runId} slice ${i}`);
   }
 
   return finish("completed", sliceResults);
