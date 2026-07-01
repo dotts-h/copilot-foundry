@@ -8,12 +8,17 @@ completion gate that closes the triangulation hole plain TDD leaves open.
 
 ## Status
 
-Early build. `apps/tdd` (helm-tdd) M0 (proving skeleton), M1 (walking skeleton), M2 (REFACTOR
-ratchet, CHECKPOINT, VERIFY ladder, ACCEPT ledger), and M3 (a generic constant-mutant completion
-gate closing the triangulation hole for the full pipeline, extended mutation operators, a dry-run
-writeback phase into `memory/`, and a standalone legacy-characterization primitive) are complete --
-the FSM now runs map through writeback for feature mode. M4 (scale-out: per-phase model overrides,
-more languages, helm-qa handoff, package extraction) is next.
+`apps/tdd` (helm-tdd) M0 through M4 are complete -- the design doc's original M0-M4 roadmap is
+fully shipped. The FSM runs `map -> baseline -> scope -> plan -> [RED -> GREEN -> REFACTOR ->
+CHECKPOINT -> mutation-gate]* -> verify -> accept -> writeback` for feature mode, with a
+structural leash proven to hold against a real, adversarial live `cursor-agent` run; a generic,
+language-agnostic RED/GREEN/leash primitive (`packages/core`) proven against both Python and
+JavaScript targets; per-phase model overrides exposed on the MCP surface; and a documented handoff
+seam a future `helm-qa` app can build on. `mode: "harden"` and full multi-language support for the
+big feature-mode pipeline (currently Python-only end-to-end; `packages/core` proves the primitive
+generalizes, not yet wired into `runFeature`) remain standalone primitives for a future milestone,
+not yet integrated into the main pipeline -- deliberately, matching this project's own "prove
+minimally, generalize only when a second real consumer needs it" discipline throughout M0-M4.
 
 ## Layout
 
