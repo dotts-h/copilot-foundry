@@ -240,4 +240,69 @@ describe("runFeature", () => {
     expect(ledger.sliceResults[1].greenGatePassed).toBe(true);
     expect(ledger.status).toBe("completed_with_regressions");
   });
+
+  it("reports completed_with_regressions when slice 2's GREEN implementation breaks slice 1's own newly-authored, already-committed test", async () => {
+    targetDir = await seedTargetRepo();
+    artifactRoot = mkdtempSync(join(tmpdir(), "feature-fsm-artifacts-"));
+
+    // Give add_kata.py a stub for the second slice's function up front, so slice 2's
+    // RED test fails with a genuine assertion failure (NotImplementedError) rather than
+    // an ImportError.
+    writeFileSync(
+      join(targetDir, "add_kata.py"),
+      "def add(a, b):\n    raise NotImplementedError\n\n\ndef subtract(a, b):\n    raise NotImplementedError\n",
+    );
+    await runCommand("git", ["add", "-A"], { cwd: targetDir });
+    await runCommand("git", ["commit", "-q", "-m", "seed subtract stub"], { cwd: targetDir });
+
+    const backend = new ScriptedBackend([
+      () => ({
+        resultText: JSON.stringify([
+          { description: "add(a, b) returns a + b", implRelPath: "add_kata.py", testRelPath: "test_add_kata.py" },
+          {
+            description: "subtract(a, b) returns a - b",
+            implRelPath: "add_kata.py",
+            testRelPath: "test_subtract_kata.py",
+          },
+        ]),
+      }),
+      async (opts) => {
+        writeFileSync(
+          join(opts.cwd, "test_add_kata.py"),
+          "from add_kata import add\n\ndef test_add():\n    assert add(2, 3) == 5\n",
+        );
+      },
+      // Slice 1's GREEN correctly implements add and leaves the subtract stub intact.
+      // This test now passes and gets committed -- it is slice 1's own newly-authored,
+      // now-known-good test, not a pre-existing baseline test.
+      async (opts) =>
+        writeImpl(
+          opts.cwd,
+          "add_kata.py",
+          "def add(a, b):\n    return a + b\n\n\ndef subtract(a, b):\n    raise NotImplementedError\n",
+        ),
+      async (opts) => {
+        writeFileSync(
+          join(opts.cwd, "test_subtract_kata.py"),
+          "from add_kata import subtract\n\ndef test_subtract():\n    assert subtract(5, 3) == 2\n",
+        );
+      },
+      // Slice 2's GREEN correctly implements subtract (its own gate, scoped to
+      // test_subtract_kata.py, passes) but silently breaks add along the way --
+      // regressing slice 1's already-committed, already-passing test.
+      async (opts) =>
+        writeImpl(
+          opts.cwd,
+          "add_kata.py",
+          "def add(a, b):\n    return a - b\n\n\ndef subtract(a, b):\n    return a - b\n",
+        ),
+    ]);
+
+    const ledger = await runFeature(baseSpec({ targetDir }), backend, artifactRoot, "run-inter-slice-regression");
+
+    expect(ledger.sliceResults).toHaveLength(2);
+    expect(ledger.sliceResults[0].greenGatePassed).toBe(true);
+    expect(ledger.sliceResults[1].greenGatePassed).toBe(true);
+    expect(ledger.status).toBe("completed_with_regressions");
+  });
 });

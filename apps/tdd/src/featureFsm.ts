@@ -166,6 +166,11 @@ export async function runFeature(
 
   const sliceResults: SliceExecutionResult[] = [];
 
+  let knownGoodPaths = new Set(
+    baseline.tests.filter((t) => t.outcome === "passed").map((t) => t.nodeId.split("::")[0]),
+  );
+  let anyRegressionDetected = false;
+
   for (let i = 0; i < slices.length; i++) {
     const slice = slices[i];
     await markProgress(artifactRoot, runId, startedAt, "slice", { sliceIndex: i, totalSlices: slices.length });
@@ -222,18 +227,21 @@ export async function runFeature(
     }
 
     await commitAll(spec.targetDir, `green: ${runId} slice ${i}`);
+
+    const postSliceScan = await runPytestVerbose(spec.venvDir, spec.targetDir);
+    const postSliceFailingPaths = new Set(
+      postSliceScan.tests
+        .filter((t) => t.outcome === "failed" || t.outcome === "error")
+        .map((t) => t.nodeId.split("::")[0]),
+    );
+    const postSlicePassingPaths = new Set(
+      postSliceScan.tests.filter((t) => t.outcome === "passed").map((t) => t.nodeId.split("::")[0]),
+    );
+    if ([...knownGoodPaths].some((p) => postSliceFailingPaths.has(p))) {
+      anyRegressionDetected = true;
+    }
+    knownGoodPaths = new Set([...knownGoodPaths, ...postSlicePassingPaths]);
   }
 
-  const finalScan = await runPytestVerbose(spec.venvDir, spec.targetDir);
-  const finalFailingPaths = new Set(
-    finalScan.tests
-      .filter((t) => t.outcome === "failed" || t.outcome === "error")
-      .map((t) => t.nodeId.split("::")[0]),
-  );
-  const baselinePassingPaths = new Set(
-    baseline.tests.filter((t) => t.outcome === "passed").map((t) => t.nodeId.split("::")[0]),
-  );
-  const regressedPaths = [...baselinePassingPaths].filter((p) => finalFailingPaths.has(p));
-
-  return finish(regressedPaths.length > 0 ? "completed_with_regressions" : "completed", sliceResults);
+  return finish(anyRegressionDetected ? "completed_with_regressions" : "completed", sliceResults);
 }
