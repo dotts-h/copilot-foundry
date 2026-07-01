@@ -64,12 +64,14 @@ describe("runFeature", () => {
 
     const ledger = await runFeature(baseSpec({ targetDir }), backend, artifactRoot, "run-feature-1");
 
-    expect(ledger.status).toBe("completed");
+    expect(ledger.status).toBe("accepted");
     expect(ledger.slices).toHaveLength(1);
     expect(ledger.sliceResults).toHaveLength(1);
     expect(ledger.sliceResults[0].redGatePassed).toBe(true);
     expect(ledger.sliceResults[0].greenGatePassed).toBe(true);
     expect(ledger.mapSummary.fileCount).toBeGreaterThan(0);
+    expect(ledger.verifyResult?.passed).toBe(true);
+    expect(ledger.acceptanceLedger?.overallAccepted).toBe(true);
   });
 
   it("stops at plan and does not execute any slice when hitl is plan-only", async () => {
@@ -215,6 +217,7 @@ describe("runFeature", () => {
           "add_kata.py",
           "def add(a, b):\n    return a + b\n\n\ndef double(x):\n    return x * 2\n\n\ndef subtract(a, b):\n    raise NotImplementedError\n",
         ),
+      async () => {}, // REFACTOR1 no-op: nothing needs cleaning up
       async (opts) => {
         writeFileSync(
           join(opts.cwd, "test_subtract_kata.py"),
@@ -231,6 +234,7 @@ describe("runFeature", () => {
           "add_kata.py",
           "def add(a, b):\n    return a + b\n\n\ndef double(x):\n    return x * 3\n\n\ndef subtract(a, b):\n    return a - b\n",
         ),
+      async () => {}, // REFACTOR2 no-op: nothing needs cleaning up
     ]);
 
     const ledger = await runFeature(baseSpec({ targetDir }), backend, artifactRoot, "run-regression");
@@ -281,6 +285,7 @@ describe("runFeature", () => {
           "add_kata.py",
           "def add(a, b):\n    return a + b\n\n\ndef subtract(a, b):\n    raise NotImplementedError\n",
         ),
+      async () => {}, // REFACTOR1 no-op: nothing needs cleaning up
       async (opts) => {
         writeFileSync(
           join(opts.cwd, "test_subtract_kata.py"),
@@ -296,6 +301,7 @@ describe("runFeature", () => {
           "add_kata.py",
           "def add(a, b):\n    return a - b\n\n\ndef subtract(a, b):\n    return a - b\n",
         ),
+      async () => {}, // REFACTOR2 no-op: nothing needs cleaning up
     ]);
 
     const ledger = await runFeature(baseSpec({ targetDir }), backend, artifactRoot, "run-inter-slice-regression");
