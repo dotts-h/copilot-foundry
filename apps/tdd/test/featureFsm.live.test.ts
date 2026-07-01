@@ -49,6 +49,7 @@ describe.skipIf(!RUN_LIVE)("runFeature (live E2E, feature mode)", () => {
         "same forwards and backwards. Plan them as two separate slices.",
       models: DEFAULT_MODELS,
       maxRepairIterations: 5,
+      commit: false,
     };
 
     const ledger = await runFeature(spec, new CursorBackend(), artifactRoot, "run-feature-live");
@@ -61,5 +62,9 @@ describe.skipIf(!RUN_LIVE)("runFeature (live E2E, feature mode)", () => {
     }
     expect(ledger.verifyResult?.passed).toBe(true);
     expect(ledger.acceptanceLedger?.overallAccepted).toBe(true);
+    for (const sliceResult of ledger.sliceResults) {
+      expect(sliceResult.mutationScore?.results.find((r) => r.operator === "constant")?.survived).toBe(false);
+    }
+    expect(ledger.writebackResult?.committed).toBe(false);
   }, 900_000);
 });
