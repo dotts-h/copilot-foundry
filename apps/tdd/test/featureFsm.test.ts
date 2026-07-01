@@ -118,6 +118,31 @@ describe("runFeature", () => {
     expect(ledger.sliceResults[0].redOutcome).toBe("already_green");
   });
 
+  it("rejects before any RED/GREEN backend call when a planned slice path is unsafe", async () => {
+    targetDir = await seedTargetRepo();
+    artifactRoot = mkdtempSync(join(tmpdir(), "feature-fsm-artifacts-"));
+
+    const backend = new ScriptedBackend([
+      () => ({
+        resultText: JSON.stringify([
+          { description: "add(a, b) returns a + b", implRelPath: "add_kata.py", testRelPath: "../../etc/passwd" },
+        ]),
+      }),
+      async (opts) => {
+        writeFileSync(
+          join(opts.cwd, "test_add_kata.py"),
+          "from add_kata import add\n\ndef test_add():\n    assert add(2, 3) == 5\n",
+        );
+      },
+      async (opts) => writeImpl(opts.cwd, "add_kata.py", "def add(a, b):\n    return a + b\n"),
+    ]);
+
+    await expect(runFeature(baseSpec({ targetDir }), backend, artifactRoot, "run-unsafe-path")).rejects.toThrow(
+      /not a safe repo-relative path/,
+    );
+    expect(backend.calls).toHaveLength(1);
+  });
+
   it("reports green_gate_exhausted when the implementation never satisfies the test and escalation also fails", async () => {
     targetDir = await seedTargetRepo();
     artifactRoot = mkdtempSync(join(tmpdir(), "feature-fsm-artifacts-"));
@@ -146,5 +171,73 @@ describe("runFeature", () => {
 
     expect(ledger.status).toBe("green_gate_exhausted");
     expect(ledger.sliceResults[0].greenGatePassed).toBe(false);
+  });
+
+  it("reports completed_with_regressions when a later slice's GREEN implementation breaks an already-passing baseline test, even though both slices' own gates pass", async () => {
+    targetDir = await seedTargetRepo();
+    artifactRoot = mkdtempSync(join(tmpdir(), "feature-fsm-artifacts-"));
+
+    // Extend the seeded repo with a second, already-implemented-and-tested function
+    // ("double") before the run starts, so it is captured as passing in the baseline
+    // taken at the top of runFeature -- and a stub for a third function ("subtract")
+    // that slice 2 will implement.
+    writeFileSync(
+      join(targetDir, "add_kata.py"),
+      "def add(a, b):\n    raise NotImplementedError\n\n\ndef double(x):\n    return x * 2\n\n\ndef subtract(a, b):\n    raise NotImplementedError\n",
+    );
+    writeFileSync(
+      join(targetDir, "test_double_kata.py"),
+      "from add_kata import double\n\ndef test_double():\n    assert double(3) == 6\n",
+    );
+    await runCommand("git", ["add", "-A"], { cwd: targetDir });
+    await runCommand("git", ["commit", "-q", "-m", "seed double"], { cwd: targetDir });
+
+    const backend = new ScriptedBackend([
+      () => ({
+        resultText: JSON.stringify([
+          { description: "add(a, b) returns a + b", implRelPath: "add_kata.py", testRelPath: "test_add_kata.py" },
+          {
+            description: "subtract(a, b) returns a - b",
+            implRelPath: "add_kata.py",
+            testRelPath: "test_subtract_kata.py",
+          },
+        ]),
+      }),
+      async (opts) => {
+        writeFileSync(
+          join(opts.cwd, "test_add_kata.py"),
+          "from add_kata import add\n\ndef test_add():\n    assert add(2, 3) == 5\n",
+        );
+      },
+      async (opts) =>
+        writeImpl(
+          opts.cwd,
+          "add_kata.py",
+          "def add(a, b):\n    return a + b\n\n\ndef double(x):\n    return x * 2\n\n\ndef subtract(a, b):\n    raise NotImplementedError\n",
+        ),
+      async (opts) => {
+        writeFileSync(
+          join(opts.cwd, "test_subtract_kata.py"),
+          "from add_kata import subtract\n\ndef test_subtract():\n    assert subtract(5, 3) == 2\n",
+        );
+      },
+      // Slice 2's GREEN correctly implements subtract (and leaves add alone), but
+      // silently breaks the already-passing "double" function -- a regression that
+      // neither this slice's own gate (scoped to test_subtract_kata.py) nor RED's
+      // baseline check (run before this write happened) can see.
+      async (opts) =>
+        writeImpl(
+          opts.cwd,
+          "add_kata.py",
+          "def add(a, b):\n    return a + b\n\n\ndef double(x):\n    return x * 3\n\n\ndef subtract(a, b):\n    return a - b\n",
+        ),
+    ]);
+
+    const ledger = await runFeature(baseSpec({ targetDir }), backend, artifactRoot, "run-regression");
+
+    expect(ledger.sliceResults).toHaveLength(2);
+    expect(ledger.sliceResults[0].greenGatePassed).toBe(true);
+    expect(ledger.sliceResults[1].greenGatePassed).toBe(true);
+    expect(ledger.status).toBe("completed_with_regressions");
   });
 });

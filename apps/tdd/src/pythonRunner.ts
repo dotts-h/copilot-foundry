@@ -15,6 +15,7 @@ export async function runPytest(
   const result = await runCommand(pytestBin, ["-q", targetRelPath ?? "."], {
     cwd,
     env: { PYTHONDONTWRITEBYTECODE: "1" },
+    timeoutMs: 60_000,
   });
   return {
     exitCode: result.exitCode,

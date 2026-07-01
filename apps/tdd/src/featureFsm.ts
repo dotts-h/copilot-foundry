@@ -6,7 +6,7 @@ import { runGreenWithRepair } from "./gates/greenGate.js";
 import type { RedLintResult } from "./gates/redLinter.js";
 import { writeLeashConfig } from "./gates/leash.js";
 import { mapRepo, type RepoMap } from "./phases/map.js";
-import { runBaseline, type BaselineReport } from "./phases/baseline.js";
+import { runBaseline, runPytestVerbose, type BaselineReport } from "./phases/baseline.js";
 import { computeScope, type ScopeReport } from "./phases/scope.js";
 import { planSlices, type PlannedSlice } from "./phases/plan.js";
 import { writeRunState } from "./runStore.js";
@@ -23,7 +23,12 @@ export interface SliceExecutionResult {
   diffGuardViolated: boolean;
 }
 
-export type FeatureRunStatus = "completed" | "plan_only" | "red_gate_failed" | "green_gate_exhausted";
+export type FeatureRunStatus =
+  | "completed"
+  | "completed_with_regressions"
+  | "plan_only"
+  | "red_gate_failed"
+  | "green_gate_exhausted";
 
 export interface FeatureLedger {
   runId: string;
@@ -62,9 +67,23 @@ function buildGreenPrompt(slice: PlannedSlice, lastFailureOutput: string | undef
   return `${base}\n\nThe previous attempt failed with:\n${lastFailureOutput}`;
 }
 
+const SAFE_REL_PATH = /^[\w][\w./-]*$/;
+
+function validateSlicePaths(slices: PlannedSlice[]): void {
+  for (const slice of slices) {
+    for (const relPath of [slice.implRelPath, slice.testRelPath]) {
+      if (relPath.startsWith("/") || relPath.split("/").includes("..") || !SAFE_REL_PATH.test(relPath)) {
+        throw new Error(
+          `runFeature: planned slice path "${relPath}" is not a safe repo-relative path (must match ${SAFE_REL_PATH}, no leading "/", no ".." segments)`,
+        );
+      }
+    }
+  }
+}
+
 async function commitAll(dir: string, message: string): Promise<void> {
-  await runCommand("git", ["add", "-A"], { cwd: dir });
-  const result = await runCommand("git", ["commit", "-q", "-m", message], { cwd: dir });
+  await runCommand("git", ["add", "-A"], { cwd: dir, timeoutMs: 30_000 });
+  const result = await runCommand("git", ["commit", "-q", "-m", message], { cwd: dir, timeoutMs: 30_000 });
   if (result.exitCode !== 0 && !/nothing to commit/.test(result.stdout + result.stderr)) {
     throw new Error(`commitAll: git commit failed (exit ${result.exitCode}): ${result.stdout}${result.stderr}`);
   }
@@ -116,6 +135,7 @@ export async function runFeature(
     repoMap,
     scopeReport,
   });
+  validateSlicePaths(slices);
   await writeArtifact(artifactRoot, runId, "plan", slices);
 
   const finish = async (status: FeatureRunStatus, sliceResults: SliceExecutionResult[]): Promise<FeatureLedger> => {
@@ -204,5 +224,16 @@ export async function runFeature(
     await commitAll(spec.targetDir, `green: ${runId} slice ${i}`);
   }
 
-  return finish("completed", sliceResults);
+  const finalScan = await runPytestVerbose(spec.venvDir, spec.targetDir);
+  const finalFailingPaths = new Set(
+    finalScan.tests
+      .filter((t) => t.outcome === "failed" || t.outcome === "error")
+      .map((t) => t.nodeId.split("::")[0]),
+  );
+  const baselinePassingPaths = new Set(
+    baseline.tests.filter((t) => t.outcome === "passed").map((t) => t.nodeId.split("::")[0]),
+  );
+  const regressedPaths = [...baselinePassingPaths].filter((p) => finalFailingPaths.has(p));
+
+  return finish(regressedPaths.length > 0 ? "completed_with_regressions" : "completed", sliceResults);
 }
