@@ -20,6 +20,11 @@ generalizes, not yet wired into `runFeature`) remain standalone primitives for a
 not yet integrated into the main pipeline -- deliberately, matching this project's own "prove
 minimally, generalize only when a second real consumer needs it" discipline throughout M0-M4.
 
+M5 makes the Claude Agent SDK (Sonnet 5, subscription auth) the default backend behind a hard
+PreToolUse leash; leash enforcement now lives behind the Backend seam; runs execute on isolated
+worktrees and deliver a `helm-tdd/<runId>` branch; and `skills/tdd/SKILL.md` is the cockpit
+router (the Layout section's `skills/` line is now real).
+
 ## Layout
 
 ```
