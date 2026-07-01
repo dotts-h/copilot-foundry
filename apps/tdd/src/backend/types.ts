@@ -2,6 +2,7 @@ export interface RunPhaseOptions {
   cwd: string;
   model: string;
   prompt: string;
+  lockedPaths?: string[];
   timeoutMs?: number;
 }
 

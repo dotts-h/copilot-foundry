@@ -5,7 +5,6 @@ import { attemptRefactor } from "./gates/refactorGate.js";
 import { classifyRedOutcome, type RedOutcome } from "./gates/redGate.js";
 import { runGreenWithRepair } from "./gates/greenGate.js";
 import type { RedLintResult } from "./gates/redLinter.js";
-import { writeLeashConfig } from "./gates/leash.js";
 import { computeMutationScore, type MutationScoreResult } from "./gates/mutationGate.js";
 import { mapRepo, type RepoMap } from "./phases/map.js";
 import { runBaseline, runPytestVerbose, type BaselineReport } from "./phases/baseline.js";
@@ -221,8 +220,12 @@ export async function runFeature(
 
     const sliceStartCommit = await currentHead(spec.targetDir);
 
-    await writeLeashConfig(spec.targetDir, [slice.testRelPath]);
-    await backend.runPhase({ cwd: spec.targetDir, model: spec.models.red, prompt: buildRedPrompt(slice) });
+    await backend.runPhase({
+      cwd: spec.targetDir,
+      model: spec.models.red,
+      prompt: buildRedPrompt(slice),
+      lockedPaths: [slice.implRelPath], // RED must not implement — now structurally enforced
+    });
     await commitAll(spec.targetDir, `red: ${runId} slice ${i}`);
 
     const redResult = await classifyRedOutcome({

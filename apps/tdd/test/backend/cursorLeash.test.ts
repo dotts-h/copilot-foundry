@@ -1,9 +1,9 @@
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { removeLeashConfig, writeLeashConfig } from "../../src/backend/cursorLeash.js";
 import { runCommand } from "../../src/exec.js";
-import { writeLeashConfig } from "../../src/gates/leash.js";
 
 describe("leash config generator", () => {
   let dir: string;
@@ -48,5 +48,15 @@ describe("leash config generator", () => {
     const { stdout } = await runCommand("bash", ["-c", `printf '%s' '${input}' | '${scriptPath}'`]);
     const parsed = JSON.parse(stdout);
     expect(parsed.permission).toBe("allow");
+  });
+
+  it("removeLeashConfig deletes only the files we wrote and leaves a pre-existing .cursor dir intact", async () => {
+    mkdirSync(join(dir, ".cursor"), { recursive: true });
+    writeFileSync(join(dir, ".cursor", "user-settings.json"), "{}");
+    await writeLeashConfig(dir, ["locked.py"]);
+    await removeLeashConfig(dir);
+    expect(existsSync(join(dir, ".cursor", "hooks.json"))).toBe(false);
+    expect(existsSync(join(dir, ".cursor", "hooks"))).toBe(false);
+    expect(existsSync(join(dir, ".cursor", "user-settings.json"))).toBe(true); // untouched
   });
 });

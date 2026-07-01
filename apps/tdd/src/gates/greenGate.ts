@@ -31,6 +31,7 @@ async function attempt(
     cwd: opts.targetDir,
     model,
     prompt: opts.buildPrompt(lastFailure),
+    lockedPaths: [opts.testRelPath],
   });
 
   const guard = await checkDiffGuard(opts.targetDir, [opts.testRelPath]);

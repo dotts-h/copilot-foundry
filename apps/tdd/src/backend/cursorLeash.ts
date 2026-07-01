@@ -1,4 +1,4 @@
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, rm, rmdir, unlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 function escapeRegExp(value: string): string {
@@ -30,4 +30,12 @@ fi
     },
   };
   await writeFile(hooksJsonPath, JSON.stringify(hooksJson, null, 2));
+}
+
+export async function removeLeashConfig(projectDir: string): Promise<void> {
+  const hooksDir = join(projectDir, ".cursor", "hooks");
+  await unlink(join(hooksDir, "deny-locked.sh")).catch(() => {});
+  await unlink(join(projectDir, ".cursor", "hooks.json")).catch(() => {});
+  await rmdir(hooksDir).catch(() => {}); // only removes if empty — never clobber a real .cursor dir
+  await rmdir(join(projectDir, ".cursor")).catch(() => {});
 }
