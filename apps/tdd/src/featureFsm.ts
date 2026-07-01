@@ -114,9 +114,15 @@ function validateSlicePaths(slices: PlannedSlice[]): void {
 }
 
 async function commitAll(dir: string, message: string): Promise<void> {
-  await runCommand("git", ["add", "-A"], { cwd: dir, timeoutMs: 30_000 });
+  // Phase agents may run python/pytest in the worktree; never commit bytecode caches onto the run branch.
+  await runCommand("git", ["add", "-A", "--", ".", ":(exclude)__pycache__", ":(exclude)*.pyc"], {
+    cwd: dir,
+    timeoutMs: 30_000,
+  });
   const result = await runCommand("git", ["commit", "-q", "-m", message], { cwd: dir, timeoutMs: 30_000 });
-  if (result.exitCode !== 0 && !/nothing to commit/.test(result.stdout + result.stderr)) {
+  // With excluded pycache present but untracked, git reports "nothing added to commit" instead of
+  // "nothing to commit" -- both mean there was nothing real to commit and must stay non-fatal.
+  if (result.exitCode !== 0 && !/nothing (added )?to commit/.test(result.stdout + result.stderr)) {
     throw new Error(`commitAll: git commit failed (exit ${result.exitCode}): ${result.stdout}${result.stderr}`);
   }
 }

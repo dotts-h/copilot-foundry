@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -65,7 +65,12 @@ describe("runFeature", () => {
           "from add_kata import add\n\ndef test_add():\n    assert add(2, 3) == 5\n    assert add(0, 0) == 0\n",
         );
       },
-      async (opts) => writeImpl(opts.cwd, "add_kata.py", "def add(a, b):\n    return a + b\n"),
+      async (opts) => {
+        await writeImpl(opts.cwd, "add_kata.py", "def add(a, b):\n    return a + b\n");
+        const pycacheDir = join(opts.cwd, "__pycache__");
+        mkdirSync(pycacheDir, { recursive: true });
+        writeFileSync(join(pycacheDir, "add_kata.cpython-313.pyc"), "fake bytecode");
+      },
     ]);
 
     const ledger = await runFeature(baseSpec({ targetDir }), backend, artifactRoot, "run-feature-1");
@@ -93,6 +98,11 @@ describe("runFeature", () => {
     expect(untouched).toContain("NotImplementedError"); // user's checkout never mutated
     const list = await runCommand("git", ["worktree", "list", "--porcelain"], { cwd: targetDir });
     expect(list.stdout.match(/^worktree /gm)?.length).toBe(1); // worktree cleaned up
+
+    const tree = await runCommand("git", ["ls-tree", "-r", "--name-only", "helm-tdd/run-feature-1"], {
+      cwd: targetDir,
+    });
+    expect(tree.stdout).not.toContain("__pycache__"); // bytecode caches never committed onto the run branch
   });
 
   it("stops at plan and does not execute any slice when hitl is plan-only", async () => {
