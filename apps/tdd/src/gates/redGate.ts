@@ -1,9 +1,8 @@
 import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { runCommand } from "../exec.js";
 import { runPytest } from "../pythonRunner.js";
-import { parsePytestVerboseOutput, type BaselineReport } from "../phases/baseline.js";
+import { runPytestVerbose, type BaselineReport } from "../phases/baseline.js";
 import { lintRedTest, type RedLintResult } from "./redLinter.js";
 
 export type RedOutcome =
@@ -60,9 +59,7 @@ export async function classifyRedOutcome(opts: {
     outcome = "collection_error";
   }
 
-  const pytestBin = join(opts.venvDir, "bin", "pytest");
-  const fullRun = await runCommand(pytestBin, ["--tb=no", "-v"], { cwd: opts.targetDir });
-  const currentResults = parsePytestVerboseOutput(fullRun.stdout);
+  const { tests: currentResults } = await runPytestVerbose(opts.venvDir, opts.targetDir);
   const currentlyFailingPaths = new Set(
     currentResults
       .filter((t) => t.outcome === "failed" || t.outcome === "error")

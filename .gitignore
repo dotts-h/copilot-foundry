@@ -11,3 +11,5 @@ build/
 coverage/
 *.tsbuildinfo
 .superpowers/
+**/__pycache__/
+*.pyc

@@ -31,13 +31,25 @@ export function parsePytestVerboseOutput(raw: string): BaselineTestResult[] {
   return results;
 }
 
-export async function runBaseline(venvDir: string, targetDir: string): Promise<BaselineReport> {
+export async function runPytestVerbose(
+  venvDir: string,
+  cwd: string,
+): Promise<{ exitCode: number; tests: BaselineTestResult[] }> {
   const pytestBin = join(venvDir, "bin", "pytest");
-  const result = await runCommand(pytestBin, ["--tb=no", "-v"], { cwd: targetDir });
+  const result = await runCommand(pytestBin, ["--tb=no", "-v"], {
+    cwd,
+    env: { PYTHONDONTWRITEBYTECODE: "1" },
+    timeoutMs: 60_000,
+  });
 
   if (result.exitCode === NO_TESTS_COLLECTED) {
-    return { tests: [] };
+    return { exitCode: result.exitCode, tests: [] };
   }
 
-  return { tests: parsePytestVerboseOutput(result.stdout) };
+  return { exitCode: result.exitCode, tests: parsePytestVerboseOutput(result.stdout) };
+}
+
+export async function runBaseline(venvDir: string, targetDir: string): Promise<BaselineReport> {
+  const { tests } = await runPytestVerbose(venvDir, targetDir);
+  return { tests };
 }
