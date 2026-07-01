@@ -50,6 +50,18 @@ describe("leash config generator", () => {
     expect(parsed.permission).toBe("allow");
   });
 
+  it("the generated script allows a command naming a file that merely embeds a locked filename", async () => {
+    await writeLeashConfig(dir, ["add_kata.py"]);
+    const scriptPath = join(dir, ".cursor", "hooks", "deny-locked.sh");
+    const allowInput = JSON.stringify({ command: "pytest test_add_kata.py" });
+    const { stdout: allowStdout } = await runCommand("bash", ["-c", `printf '%s' '${allowInput}' | '${scriptPath}'`]);
+    expect(JSON.parse(allowStdout).permission).toBe("allow");
+
+    const denyInput = JSON.stringify({ command: "pytest add_kata.py" });
+    const { stdout: denyStdout } = await runCommand("bash", ["-c", `printf '%s' '${denyInput}' | '${scriptPath}'`]);
+    expect(JSON.parse(denyStdout).permission).toBe("deny");
+  });
+
   it("removeLeashConfig deletes only the files we wrote and leaves a pre-existing .cursor dir intact", async () => {
     mkdirSync(join(dir, ".cursor"), { recursive: true });
     writeFileSync(join(dir, ".cursor", "user-settings.json"), "{}");

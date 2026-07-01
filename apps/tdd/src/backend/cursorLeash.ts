@@ -9,7 +9,7 @@ export async function writeLeashConfig(projectDir: string, lockedPaths: string[]
   const hooksDir = join(projectDir, ".cursor", "hooks");
   await mkdir(hooksDir, { recursive: true });
 
-  const pattern = lockedPaths.map(escapeRegExp).join("|");
+  const pattern = lockedPaths.map((p) => `(^|[^A-Za-z0-9_.-])${escapeRegExp(p)}`).join("|");
   const scriptPath = join(hooksDir, "deny-locked.sh");
   const script = `#!/usr/bin/env bash
 input="$(cat)"

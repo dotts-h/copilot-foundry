@@ -30,4 +30,13 @@ describe("evaluateLeash", () => {
     const d = evaluateLeash(cwd, locked, "Write", { file_path: "tests/test_add.py" });
     expect(d.reason).toContain("leash");
   });
+  it("allows Read of a locked path (the leash is a write leash)", () => {
+    expect(evaluateLeash(cwd, locked, "Read", { file_path: "tests/test_add.py" }).deny).toBe(false);
+  });
+  it("allows Bash naming a file that merely embeds a locked filename", () => {
+    expect(evaluateLeash(cwd, ["add_kata.py"], "Bash", { command: "pytest test_add_kata.py" }).deny).toBe(false);
+  });
+  it("still denies Bash referencing the locked path as its own token", () => {
+    expect(evaluateLeash(cwd, ["add_kata.py"], "Bash", { command: "pytest add_kata.py" }).deny).toBe(true);
+  });
 });
