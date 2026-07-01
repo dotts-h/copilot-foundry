@@ -1,4 +1,4 @@
-import { mkdir, rm, rmdir, unlink, writeFile } from "node:fs/promises";
+import { mkdir, rmdir, unlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 function escapeRegExp(value: string): string {
