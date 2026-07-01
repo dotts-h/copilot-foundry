@@ -3,6 +3,7 @@ import { spawn } from "node:child_process";
 export interface RunCommandOptions {
   cwd?: string;
   timeoutMs?: number;
+  env?: Record<string, string>;
 }
 
 export interface RunCommandResult {
@@ -17,7 +18,10 @@ export function runCommand(
   opts?: RunCommandOptions,
 ): Promise<RunCommandResult> {
   return new Promise((resolve, reject) => {
-    const child = spawn(cmd, args, { cwd: opts?.cwd });
+    const child = spawn(cmd, args, {
+      cwd: opts?.cwd,
+      env: opts?.env ? { ...process.env, ...opts.env } : undefined,
+    });
 
     let stdout = "";
     let stderr = "";

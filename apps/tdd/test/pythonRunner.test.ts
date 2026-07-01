@@ -35,4 +35,17 @@ describe("runPytest", () => {
     const result = await runPytest(FIXTURE_VENV, dir, "test_a.py");
     expect(result.exitCode).toBe(0);
   });
+
+  it("does not reuse stale cached bytecode when the target module is rewritten between runs", async () => {
+    dir = mkdtempSync(join(tmpdir(), "pytest-runner-"));
+    writeFileSync(join(dir, "m.py"), "def value():\n    return 1\n");
+    writeFileSync(join(dir, "test_m.py"), "from m import value\n\ndef test_value():\n    assert value() == 2\n");
+
+    const first = await runPytest(FIXTURE_VENV, dir, "test_m.py");
+    expect(first.exitCode).toBe(1);
+
+    writeFileSync(join(dir, "m.py"), "def value():\n    return 2\n");
+    const second = await runPytest(FIXTURE_VENV, dir, "test_m.py");
+    expect(second.exitCode).toBe(0);
+  });
 });
