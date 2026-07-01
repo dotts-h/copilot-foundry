@@ -12,8 +12,14 @@ export class ClaudeBackend implements Backend {
     const timer = setTimeout(() => controller.abort(), timeoutMs);
     const lockedPaths = opts.lockedPaths ?? [];
     try {
+      // The SDK agent has no equivalent of cursor-agent's --workspace grounding; without this,
+      // agents have been observed writing to absolute paths outside the workspace.
+      const groundedPrompt =
+        `You are working inside the repository at ${opts.cwd} (your current working directory). ` +
+        "All file paths in the task below are relative to it. Never create or modify files outside it.\n\n" +
+        opts.prompt;
       const stream = query({
-        prompt: opts.prompt,
+        prompt: groundedPrompt,
         options: {
           cwd: opts.cwd,
           model: opts.model,

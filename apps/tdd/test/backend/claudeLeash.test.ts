@@ -39,4 +39,18 @@ describe("evaluateLeash", () => {
   it("still denies Bash referencing the locked path as its own token", () => {
     expect(evaluateLeash(cwd, ["add_kata.py"], "Bash", { command: "pytest add_kata.py" }).deny).toBe(true);
   });
+  it("denies Write to an absolute path outside the workspace", () => {
+    const d = evaluateLeash(cwd, locked, "Write", { file_path: "/home/somewhere/else.py" });
+    expect(d.deny).toBe(true);
+    expect(d.reason).toContain("outside the helm-tdd workspace");
+  });
+  it("denies Edit escaping the workspace via ..", () => {
+    expect(evaluateLeash(cwd, locked, "Edit", { file_path: "../escape.py" }).deny).toBe(true);
+  });
+  it("allows Write to a nested path under the workspace", () => {
+    expect(evaluateLeash(cwd, locked, "Write", { file_path: "sub/dir/new_file.py" }).deny).toBe(false);
+  });
+  it("does not confine when no paths are locked (plan phase has no leash)", () => {
+    expect(evaluateLeash(cwd, [], "Write", { file_path: "/anywhere/x.py" }).deny).toBe(false);
+  });
 });
