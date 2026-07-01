@@ -17,7 +17,9 @@ vi.mock("../../src/featureFsm.js", () => ({
       scopeReport: { inScope: [], reason: "test" },
       slices: [],
       sliceResults: [],
-      status: "completed" as const,
+      verifyResult: null,
+      acceptanceLedger: null,
+      status: "accepted" as const,
       completedAt: new Date().toISOString(),
     };
     await writeArtifact(artifactRoot, runId, "featureLedger", ledger);
