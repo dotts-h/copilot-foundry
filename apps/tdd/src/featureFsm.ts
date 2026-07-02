@@ -165,7 +165,7 @@ export async function runFeature(
     const startedAt = new Date().toISOString();
     await markProgress(artifactRoot, runId, startedAt, "map", workspace.branchName);
 
-    const repoMap: RepoMap = await mapRepo(workDir);
+    const repoMap: RepoMap = await mapRepo(workDir, spec.venvDir);
     await writeArtifact(artifactRoot, runId, "map", repoMap);
 
     await markProgress(artifactRoot, runId, startedAt, "baseline", workspace.branchName);

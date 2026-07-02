@@ -4,7 +4,7 @@ import { ScriptedBackend } from "../helpers/fakeBackend.js";
 import type { RepoMap } from "../../src/phases/map.js";
 import type { ScopeReport } from "../../src/phases/scope.js";
 
-const EMPTY_MAP: RepoMap = { files: [], testFiles: [], imports: {} };
+const EMPTY_MAP: RepoMap = { files: [], testFiles: [], imports: {}, symbols: {} };
 const REPO_SCOPE: ScopeReport = { inScope: [], reason: "scope=repo" };
 
 describe("planSlices", () => {
