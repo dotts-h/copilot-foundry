@@ -22,10 +22,27 @@ export interface RedGateResult {
 const ALL_PASSED = 0;
 const TESTS_FAILED = 1;
 
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+// A new symbol not yet existing in the implementation module is the canonical first RED of TDD --
+// distinguish that from a trash/broken test so it doesn't get misclassified as a collection_error.
+export function isMissingSymbolCollectionError(raw: string, functionName: string): boolean {
+  const name = escapeRegExp(functionName);
+  const patterns = [
+    new RegExp(`cannot import name '${name}'`),
+    new RegExp(`has no attribute '${name}'`),
+    new RegExp(`NameError: name '${name}'`),
+  ];
+  return patterns.some((pattern) => pattern.test(raw));
+}
+
 export async function classifyRedOutcome(opts: {
   targetDir: string;
   venvDir: string;
   testRelPath: string;
+  functionName: string;
   baseline: BaselineReport;
 }): Promise<RedGateResult> {
   const testFilePath = join(opts.targetDir, opts.testRelPath);
@@ -55,6 +72,13 @@ export async function classifyRedOutcome(opts: {
     [ALL_PASSED, TESTS_FAILED].includes(secondRun.exitCode)
   ) {
     outcome = "flaky";
+  } else if (
+    ![ALL_PASSED, TESTS_FAILED].includes(firstRun.exitCode) &&
+    ![ALL_PASSED, TESTS_FAILED].includes(secondRun.exitCode) &&
+    isMissingSymbolCollectionError(firstRun.raw, opts.functionName) &&
+    isMissingSymbolCollectionError(secondRun.raw, opts.functionName)
+  ) {
+    outcome = "failed_as_expected";
   } else {
     outcome = "collection_error";
   }

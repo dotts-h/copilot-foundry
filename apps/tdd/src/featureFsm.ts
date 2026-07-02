@@ -71,6 +71,9 @@ function buildRedPrompt(slice: PlannedSlice): string {
     "Include at least two assertions with different, non-trivially-related expected values (not just one " +
     "example) so the test actually triangulates the behavior and cannot be satisfied by a function that " +
     "always returns a single constant. " +
+    "If the function or symbol under test does not exist yet in the implementation module, do NOT add it " +
+    "to a module-top import -- import it inside the new test function(s) instead, so the rest of the test " +
+    "module still collects and runs. Never modify or remove existing imports. " +
     "Do NOT implement or modify the implementation file. Do not create or modify any other file."
   );
 }
@@ -248,6 +251,7 @@ export async function runFeature(
         targetDir: workDir,
         venvDir: spec.venvDir,
         testRelPath: slice.testRelPath,
+        functionName: slice.functionName,
         baseline,
       });
 
