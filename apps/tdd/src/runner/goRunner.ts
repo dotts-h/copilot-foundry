@@ -41,7 +41,8 @@ export const GO_RED_PROMPT_RULES =
 export const GO_MISSING_SYMBOL_RED_NOTE =
   "does NOT exist yet — your test will fail to compile with `undefined: <symbol>` " +
   "(or a related compiler diagnostic, e.g. `<expr> undefined (type T has no field or " +
-  "method <symbol>)` or `unknown field <symbol> in struct literal`); that compile " +
+  "method <symbol>)`, `unknown field <symbol> in struct literal`, or `assignment " +
+  "mismatch: N variables but M values`); that compile " +
   "failure is the expected RED, do not stub the symbol.";
 
 const EXCLUDED_PATH_SEGMENTS = ["vendor", "testdata"];
@@ -148,20 +149,32 @@ const GENERIC_MISSING_SYMBOL_PATTERNS = [
   /\S+ undefined \(type \S+ has no field or method \S+\)/,
   /unknown field \S+ in struct literal/,
   /\S+ not declared by package/,
+  // Go signature-change compiler diagnostics: a RED test driving a new function
+  // signature (different arg/return count) fails to compile with one of these
+  // shapes rather than a bare `undefined: <symbol>`. These are also legitimate
+  // first-RED evidence for a not-yet-implemented (or changed) signature.
+  // Two compiler shapes: "3 variables but 2 values" (literal RHS) and
+  // "3 variables but f(x) returns 2 values" (call RHS — the shape a changed
+  // return arity actually produces).
+  /assignment mismatch: \d+ variables? but (?:.+ returns )?\d+ values?/,
+  /not enough arguments in call to \S+/,
+  /too many arguments in call to \S+/,
+  /not enough return values/,
+  /too many return values/,
 ];
 
 export function isMissingSymbolError(raw: string, functionName: string): boolean {
   const name = escapeRegExp(functionName);
-  const patterns = [
+  const functionPinnedPatterns = [
     new RegExp(`undefined: (\\w+\\.)?${name}\\b`),
     new RegExp(`${name} not declared by package`),
     new RegExp(`has no field or method ${name}`),
   ];
-  if (patterns.some((pattern) => pattern.test(raw))) return true;
-  return GENERIC_MISSING_SYMBOL_PATTERNS.some((pattern) => pattern.test(raw));
+  return [...functionPinnedPatterns, ...GENERIC_MISSING_SYMBOL_PATTERNS].some((pattern) => pattern.test(raw));
 }
 
 const GO_TEST_ENV: Record<string, string> = { GOFLAGS: "-count=1" };
+const GO_TEST_TIMEOUT_MS = 180_000;
 
 async function readModulePathFromWorkDir(workDir: string): Promise<string> {
   try {
@@ -177,7 +190,7 @@ export function createGoRunner(_targetDir: string): TargetRunner {
     const result = await goRunnerDeps.runCommand("go", ["test", ...pkgs], {
       cwd: workDir,
       env: GO_TEST_ENV,
-      timeoutMs: 180_000,
+      timeoutMs: GO_TEST_TIMEOUT_MS,
     });
     return { exitCode: result.exitCode, raw: result.stdout + result.stderr };
   }
@@ -196,7 +209,7 @@ export function createGoRunner(_targetDir: string): TargetRunner {
     const result = await goRunnerDeps.runCommand("go", ["test", "./...", "-v"], {
       cwd: workDir,
       env: GO_TEST_ENV,
-      timeoutMs: 180_000,
+      timeoutMs: GO_TEST_TIMEOUT_MS,
     });
     const modulePath = await readModulePathFromWorkDir(workDir);
     return {
