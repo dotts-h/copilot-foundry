@@ -122,6 +122,45 @@ describe("isMissingSymbolError", () => {
   });
 });
 
+describe("isMissingSymbolError generic missing-symbol diagnostics (not pinned to functionName)", () => {
+  // Tradeoff accepted here: once we fall back to broad, ANY-identifier patterns, a
+  // typo'd identifier in the RED test (e.g. referencing "Contrl" instead of "Control")
+  // would also be classified as missing_symbol instead of collection_error. That is
+  // considered acceptable because the orchestrator's branch review is the backstop
+  // that catches a RED test asserting against the wrong symbol.
+  it("accepts generic Go compiler missing-symbol shapes even when unrelated to functionName, but still rejects plain syntax errors", async () => {
+    const { isMissingSymbolError: isMissingSymbolErrorDynamic } = await import("../../src/runner/goRunner.js");
+
+    // (1) verbatim twiceshy failure line: a brand-new struct field reference on an
+    // existing type, with functionName pinned to something else entirely.
+    expect(
+      isMissingSymbolErrorDynamic(
+        "internal/agenteval/model_task_drafter_test.go:131:8: dt.Control undefined " +
+          "(type draftedTaskJSON has no field or method Control)",
+        "parseDraftedTask",
+      ),
+    ).toBe(true);
+
+    // (2) "unknown field X in struct literal" shape, also unrelated to functionName.
+    expect(
+      isMissingSymbolErrorDynamic(
+        "internal/agenteval/model_task_drafter_test.go:140:9: unknown field Verdict " +
+          "in struct literal of type draftedTaskJSON",
+        "parseDraftedTask",
+      ),
+    ).toBe(true);
+
+    // (3) a pure Go syntax error must still be rejected so collection_error remains
+    // reachable for malformed tests -- not every compile failure is a missing symbol.
+    expect(
+      isMissingSymbolErrorDynamic(
+        "internal/agenteval/model_task_drafter_test.go:12:5: syntax error: expected ';', found 'EOF'",
+        "parseDraftedTask",
+      ),
+    ).toBe(false);
+  });
+});
+
 describe("createGoRunner command construction", () => {
   let dir: string;
   let runSpy: ReturnType<typeof vi.spyOn>;
