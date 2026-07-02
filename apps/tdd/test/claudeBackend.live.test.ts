@@ -50,6 +50,7 @@ describe.skipIf(!RUN_LIVE)("ClaudeBackend live E2E", () => {
       mode: "feature",
       targetDir,
       venvDir: FIXTURE_VENV,
+      language: "python",
       scope: "repo",
       hitl: "auto",
       featureDescription:

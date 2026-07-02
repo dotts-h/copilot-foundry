@@ -24,6 +24,7 @@ export async function handoffFromQa(
     mode: "feature",
     targetDir: request.targetDir,
     venvDir: request.venvDir,
+    language: "python",
     scope: "repo",
     hitl: "auto",
     featureDescription: request.featureDescription,

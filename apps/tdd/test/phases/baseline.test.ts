@@ -3,8 +3,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { parsePytestVerboseOutput, runBaseline } from "../../src/phases/baseline.js";
+import { createPythonRunner } from "../../src/runner/pythonRunner.js";
 
 const FIXTURE_VENV = join(process.cwd(), "fixtures", "add-kata", ".venv");
+const runner = createPythonRunner(FIXTURE_VENV);
 
 describe("runBaseline", () => {
   let dir: string;
@@ -23,7 +25,7 @@ describe("runBaseline", () => {
       "def test_pass():\n    assert True\n\n\ndef test_fail():\n    assert False\n",
     );
 
-    const report = await runBaseline(FIXTURE_VENV, dir);
+    const report = await runBaseline(runner, dir);
 
     const byName = Object.fromEntries(report.tests.map((t) => [t.nodeId.split("::").pop(), t.outcome]));
     expect(byName.test_pass).toBe("passed");
@@ -32,7 +34,7 @@ describe("runBaseline", () => {
   });
 
   it("returns an empty report when there are no tests to collect", async () => {
-    const report = await runBaseline(FIXTURE_VENV, dir);
+    const report = await runBaseline(runner, dir);
     expect(report.tests).toEqual([]);
   });
 
@@ -43,7 +45,7 @@ describe("runBaseline", () => {
     );
     writeFileSync(join(dir, "test_mixed.py"), "def test_pass():\n    assert True\n");
 
-    const report = await runBaseline(FIXTURE_VENV, dir);
+    const report = await runBaseline(runner, dir);
 
     const byName = Object.fromEntries(report.tests.map((t) => [t.nodeId.split("::").pop(), t.outcome]));
     expect(byName.test_pass).toBe("passed");

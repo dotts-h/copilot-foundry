@@ -3,8 +3,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { mapRepo } from "../../src/phases/map.js";
+import { createPythonRunner } from "../../src/runner/pythonRunner.js";
 
 const FIXTURE_VENV = join(process.cwd(), "fixtures", "add-kata", ".venv");
+const runner = createPythonRunner(FIXTURE_VENV);
 
 describe("mapRepo", () => {
   let dir: string;
@@ -76,7 +78,7 @@ describe("mapRepo", () => {
       ].join("\n"),
     );
 
-    const map = await mapRepo(dir, FIXTURE_VENV);
+    const map = await mapRepo(dir, runner);
     const symbols = map.symbols["sample.py"];
 
     expect(symbols).toBeDefined();
@@ -122,7 +124,7 @@ describe("mapRepo", () => {
     writeFileSync(join(dir, "good.py"), "def ok() -> int:\n    return 1\n");
     writeFileSync(join(dir, "bad.py"), "def broken(\n");
 
-    const map = await mapRepo(dir, FIXTURE_VENV);
+    const map = await mapRepo(dir, runner);
 
     expect(map.symbols["good.py"]).toEqual({
       functions: [{ name: "ok", signature: "ok() -> int", line: 1 }],
@@ -141,7 +143,7 @@ describe("mapRepo", () => {
     writeFileSync(join(dir, "good.py"), "def ok() -> int:\n    return 1\n");
     writeFileSync(join(dir, "bad.py"), Buffer.from([0xff, 0xfe, 0xfd]));
 
-    const map = await mapRepo(dir, FIXTURE_VENV);
+    const map = await mapRepo(dir, runner);
 
     expect(map.symbols["good.py"]).toEqual({
       functions: [{ name: "ok", signature: "ok() -> int", line: 1 }],
@@ -170,7 +172,7 @@ describe("mapRepo", () => {
   it("fail-soft returns empty symbols for a nonexistent venv", async () => {
     writeFileSync(join(dir, "sample.py"), "def foo() -> None:\n    pass\n");
 
-    const map = await mapRepo(dir, "/nonexistent-venv");
+    const map = await mapRepo(dir, createPythonRunner("/nonexistent-venv"));
 
     expect(map.symbols).toEqual({});
     expect(map.files).toEqual(["sample.py"]);

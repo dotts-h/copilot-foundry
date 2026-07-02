@@ -4,9 +4,11 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { runCommand } from "../../src/exec.js";
 import { runGreenWithRepair } from "../../src/gates/greenGate.js";
+import { createPythonRunner } from "../../src/runner/pythonRunner.js";
 import { ScriptedBackend, writeImpl } from "../helpers/fakeBackend.js";
 
 const FIXTURE_VENV = join(process.cwd(), "fixtures", "add-kata", ".venv");
+const runner = createPythonRunner(FIXTURE_VENV);
 
 async function seedRepo(): Promise<string> {
   const dir = mkdtempSync(join(tmpdir(), "green-gate-"));
@@ -36,7 +38,7 @@ describe("runGreenWithRepair", () => {
     const result = await runGreenWithRepair({
       backend,
       targetDir: dir,
-      venvDir: FIXTURE_VENV,
+      runner,
       testRelPath: "test_add_kata.py",
       greenModel: "fake-green",
       escalationModel: "fake-escalation",
@@ -60,7 +62,7 @@ describe("runGreenWithRepair", () => {
     const result = await runGreenWithRepair({
       backend,
       targetDir: dir,
-      venvDir: FIXTURE_VENV,
+      runner,
       testRelPath: "test_add_kata.py",
       greenModel: "fake-green",
       escalationModel: "fake-escalation",
@@ -85,7 +87,7 @@ describe("runGreenWithRepair", () => {
     const result = await runGreenWithRepair({
       backend,
       targetDir: dir,
-      venvDir: FIXTURE_VENV,
+      runner,
       testRelPath: "test_add_kata.py",
       greenModel: "fake-green",
       escalationModel: "fake-escalation",
@@ -108,7 +110,7 @@ describe("runGreenWithRepair", () => {
     const result = await runGreenWithRepair({
       backend,
       targetDir: dir,
-      venvDir: FIXTURE_VENV,
+      runner,
       testRelPath: "test_add_kata.py",
       greenModel: "fake-green",
       escalationModel: "fake-escalation",
@@ -133,7 +135,7 @@ describe("runGreenWithRepair", () => {
     const result = await runGreenWithRepair({
       backend,
       targetDir: dir,
-      venvDir: FIXTURE_VENV,
+      runner,
       testRelPath: "test_add_kata.py",
       greenModel: "fake-green",
       escalationModel: "fake-escalation",

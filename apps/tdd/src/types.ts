@@ -1,3 +1,5 @@
+import type { TargetLanguage } from "./runner/types.js";
+
 export interface RunSpec {
   targetDir: string;
   venvDir: string;
@@ -61,7 +63,8 @@ export function resolveModels(kind: BackendKind, overrides?: Partial<ModelRoutin
 export interface FeatureRunSpec {
   mode: WorkflowMode;
   targetDir: string;
-  venvDir: string;
+  venvDir?: string;
+  language?: TargetLanguage;
   scope: WorkflowScope;
   hitl: HitlMode;
   featureDescription: string;

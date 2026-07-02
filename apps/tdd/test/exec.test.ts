@@ -22,6 +22,14 @@ describe("runCommand", () => {
     expect(result.stdout.trim()).toBe("/tmp");
   });
 
+  it("writes optional stdin before closing the child stdin stream", async () => {
+    const result = await runCommand("node", ["-e", "let s='';process.stdin.on('data',d=>s+=d);process.stdin.on('end',()=>console.log(s))"], {
+      stdin: "hello\nstdin",
+    });
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout.trim()).toBe("hello\nstdin");
+  });
+
   it("rejects if the command does not finish within timeoutMs", async () => {
     await expect(
       runCommand("node", ["-e", "setTimeout(() => {}, 5000)"], {

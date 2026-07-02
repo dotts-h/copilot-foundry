@@ -2,6 +2,7 @@ import { writeArtifact } from "./artifacts/vault.js";
 import type { Backend } from "./backend/types.js";
 import { runCommand } from "./exec.js";
 import { classifyCharacterizationOutcome, type CharacterizationOutcome } from "./gates/characterizationGate.js";
+import { createPythonRunner } from "./runner/pythonRunner.js";
 
 export interface HardenSliceSpec {
   targetDir: string;
@@ -47,9 +48,11 @@ export async function runHardenSlice(
     timeoutMs: 30_000,
   });
 
+  const runner = createPythonRunner(spec.venvDir);
+
   const characterization = await classifyCharacterizationOutcome({
     targetDir: spec.targetDir,
-    venvDir: spec.venvDir,
+    runner,
     testRelPath: spec.testRelPath,
   });
 
