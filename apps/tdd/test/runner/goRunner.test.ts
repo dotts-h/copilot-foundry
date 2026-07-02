@@ -161,6 +161,81 @@ describe("isMissingSymbolError generic missing-symbol diagnostics (not pinned to
   });
 });
 
+describe("isMissingSymbolError accepts Go signature-change compiler diagnostics", () => {
+  it("treats assignment-mismatch, argument-count, and return-value-count diagnostics as missing-symbol evidence, but still rejects plain syntax errors", async () => {
+    const { isMissingSymbolError: isMissingSymbolErrorDynamic } = await import("../../src/runner/goRunner.js");
+
+    // (1) assignment mismatch, plural "variables" shape -- a caller written against the
+    // OLD signature (e.g. `x, err := ParseThing()`) while the new RED test drives a
+    // signature that now returns more values than are assigned.
+    expect(
+      isMissingSymbolErrorDynamic(
+        "internal/foo/foo_test.go:22:10: assignment mismatch: 2 variables but 1 value",
+        "ParseThing",
+      ),
+    ).toBe(true);
+
+    // (2) assignment mismatch, singular "variable" shape -- Go's compiler pluralizes
+    // "variable"/"value" independently, so both forms must be recognized.
+    expect(
+      isMissingSymbolErrorDynamic(
+        "internal/foo/foo_test.go:23:2: assignment mismatch: 1 variable but 2 values",
+        "ParseThing",
+      ),
+    ).toBe(true);
+
+    // (3) not enough arguments in call to <expr>.
+    expect(
+      isMissingSymbolErrorDynamic(
+        "internal/foo/foo_test.go:24:5: not enough arguments in call to ParseThing\n\thave (int)\n\twant (int, string)",
+        "ParseThing",
+      ),
+    ).toBe(true);
+
+    // (4) too many arguments in call to <expr>.
+    expect(
+      isMissingSymbolErrorDynamic(
+        "internal/foo/foo_test.go:25:5: too many arguments in call to ParseThing\n\thave (int, string, bool)\n\twant (int, string)",
+        "ParseThing",
+      ),
+    ).toBe(true);
+
+    // (5) not enough return values.
+    expect(
+      isMissingSymbolErrorDynamic(
+        "internal/foo/foo_test.go:30:2: not enough return values\n\thave (int)\n\twant (int, error)",
+        "ParseThing",
+      ),
+    ).toBe(true);
+
+    // (6) too many return values.
+    expect(
+      isMissingSymbolErrorDynamic(
+        "internal/foo/foo_test.go:31:2: too many return values\n\thave (int, error, bool)\n\twant (int, error)",
+        "ParseThing",
+      ),
+    ).toBe(true);
+
+    // (7) a pure Go syntax error must still be rejected so collection_error remains
+    // reachable for malformed tests -- not every compile failure is a signature change.
+    expect(
+      isMissingSymbolErrorDynamic(
+        "internal/foo/foo_test.go:12:5: syntax error: unexpected newline, expecting comma or )",
+        "ParseThing",
+      ),
+    ).toBe(false);
+  });
+});
+
+describe("GO_MISSING_SYMBOL_RED_NOTE mentions the assignment-mismatch shape", () => {
+  it("adds the assignment-mismatch diagnostic to its parenthetical example list alongside the existing examples", async () => {
+    const { GO_MISSING_SYMBOL_RED_NOTE: note } = await import("../../src/runner/goRunner.js");
+
+    expect(note).toContain("undefined: <symbol>");
+    expect(note).toMatch(/assignment mismatch/);
+  });
+});
+
 describe("createGoRunner command construction", () => {
   let dir: string;
   let runSpy: ReturnType<typeof vi.spyOn>;
