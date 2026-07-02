@@ -25,7 +25,14 @@ export function createTddMcpServer(deps: { artifactRoot: string }): McpServer {
         "Defaults to the Claude Agent SDK on Sonnet 5 as the backend.",
       inputSchema: {
         targetDir: z.string(),
-        venvDir: z.string(),
+        venvDir: z
+          .string()
+          .optional()
+          .describe("Absolute path to the target repo's Python venv (pytest installed). Required for python targets."),
+        language: z
+          .enum(["python", "js", "go"])
+          .optional()
+          .describe("Target language; auto-detected from the target when omitted."),
         featureDescription: z.string(),
         scope: z.enum(["node", "module", "package", "repo"]).default("repo"),
         hitl: z.enum(["plan-only", "auto"]).default("auto"),
@@ -46,6 +53,7 @@ export function createTddMcpServer(deps: { artifactRoot: string }): McpServer {
     async ({
       targetDir,
       venvDir,
+      language,
       featureDescription,
       scope,
       hitl,
@@ -70,6 +78,7 @@ export function createTddMcpServer(deps: { artifactRoot: string }): McpServer {
         mode: "feature",
         targetDir,
         venvDir,
+        language,
         scope,
         hitl,
         featureDescription,

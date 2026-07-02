@@ -1,7 +1,21 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { dirname, join, relative, resolve } from "node:path";
 import { runCommand } from "./exec.js";
+
+export async function gitRootOf(dir: string): Promise<string> {
+  const result = await runCommand("git", ["rev-parse", "--show-toplevel"], { cwd: dir, timeoutMs: 15_000 });
+  if (result.exitCode !== 0) {
+    throw new Error(`gitRootOf: "${dir}" is not a git repository: ${result.stderr.trim()}`);
+  }
+  return result.stdout.trim();
+}
+
+export async function scopeRelPathFromGitRoot(targetDir: string): Promise<string> {
+  const gitRoot = await gitRootOf(targetDir);
+  const rel = relative(gitRoot, resolve(targetDir));
+  return rel === "." ? "" : rel;
+}
 
 export interface RunWorkspace {
   workDir: string;

@@ -25,6 +25,7 @@ function baseSpec(overrides: Partial<FeatureRunSpec> = {}): FeatureRunSpec {
     mode: "feature",
     targetDir: "",
     venvDir: FIXTURE_VENV,
+    language: "python",
     scope: "repo",
     hitl: "auto",
     featureDescription: "implement add",

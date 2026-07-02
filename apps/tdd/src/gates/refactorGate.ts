@@ -39,7 +39,7 @@ export interface RefactorAttemptOptions {
   backend: Backend;
   targetDir: string;
   runner: TargetRunner;
-  venvDir: string;
+  venvDir?: string;
   implRelPath: string;
   testRelPath: string;
   refactorModel: string;
@@ -49,7 +49,7 @@ export interface RefactorAttemptOptions {
 export interface RefactorAttemptResult {
   attempted: boolean;
   applied: boolean;
-  before: RefactorMetrics;
+  before: RefactorMetrics | null;
   after: RefactorMetrics | null;
   reason: string;
 }
@@ -60,8 +60,15 @@ function ratchetHolds(before: RefactorMetrics, after: RefactorMetrics): boolean 
 
 export async function attemptRefactor(opts: RefactorAttemptOptions): Promise<RefactorAttemptResult> {
   const implPath = join(opts.targetDir, opts.implRelPath);
-  const before = await measurePythonFile(opts.venvDir, implPath);
   const originalSource = await readFile(implPath, "utf8");
+
+  let before: RefactorMetrics | null = null;
+  if (opts.runner.language === "python") {
+    if (!opts.venvDir) {
+      throw new Error("attemptRefactor: python refactor requires venvDir");
+    }
+    before = await measurePythonFile(opts.venvDir, implPath);
+  }
 
   await opts.backend.runPhase({
     cwd: opts.targetDir,
@@ -75,14 +82,18 @@ export async function attemptRefactor(opts: RefactorAttemptOptions): Promise<Ref
     await revertPaths(opts.targetDir, guard.offendingPaths);
   }
 
-  const pytestResult = await opts.runner.runTests(opts.targetDir, opts.testRelPath);
-  if (opts.runner.classifyRun(pytestResult) !== "passed") {
+  const testResult = await opts.runner.runTests(opts.targetDir, opts.testRelPath);
+  if (opts.runner.classifyRun(testResult) !== "passed") {
     await writeFile(implPath, originalSource);
     return { attempted: true, applied: false, before, after: null, reason: "refactor broke the test; reverted" };
   }
 
-  const after = await measurePythonFile(opts.venvDir, implPath);
-  if (!ratchetHolds(before, after)) {
+  if (opts.runner.language !== "python") {
+    return { attempted: true, applied: true, before: null, after: null, reason: "refactor applied; tests pass" };
+  }
+
+  const after = await measurePythonFile(opts.venvDir!, implPath);
+  if (!ratchetHolds(before!, after)) {
     await writeFile(implPath, originalSource);
     return {
       attempted: true,

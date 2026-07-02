@@ -15,9 +15,9 @@ import { buildCheckpoint } from "./phases/checkpoint.js";
 import { runVerifyLadder, type VerifyResult } from "./phases/verify.js";
 import { buildAcceptanceLedger, type AcceptanceLedger } from "./phases/accept.js";
 import { writeback, type WritebackResult } from "./phases/writeback.js";
-import { createRunWorkspace, removeRunWorkspace } from "./runWorkspace.js";
+import { createRunWorkspace, removeRunWorkspace, scopeRelPathFromGitRoot } from "./runWorkspace.js";
 import { writeRunState } from "./runStore.js";
-import { createPythonRunner } from "./runner/pythonRunner.js";
+import { resolveRunner } from "./runner/resolve.js";
 import type { TargetRunner } from "./runner/types.js";
 import { validateFeatureRunSpec, type FeatureRunSpec } from "./types.js";
 
@@ -211,14 +211,21 @@ export async function runFeature(
 ): Promise<FeatureLedger> {
   validateFeatureRunSpec(spec);
 
-  const runner = createPythonRunner(spec.venvDir);
+  const runner = await resolveRunner({
+    targetDir: spec.targetDir,
+    venvDir: spec.venvDir,
+    language: spec.language,
+  });
+  const scopeRelPath = await scopeRelPathFromGitRoot(spec.targetDir);
   const workspace = await createRunWorkspace(spec.targetDir, runId);
   const workDir = workspace.workDir;
   try {
+    await runner.ensureEnv(workDir);
+
     const startedAt = new Date().toISOString();
     await markProgress(artifactRoot, runId, startedAt, "map", workspace.branchName);
 
-    const repoMap: RepoMap = await mapRepo(workDir, runner);
+    const repoMap: RepoMap = await mapRepo(workDir, runner, scopeRelPath);
     await writeArtifact(artifactRoot, runId, "map", repoMap);
 
     await markProgress(artifactRoot, runId, startedAt, "baseline", workspace.branchName);

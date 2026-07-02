@@ -64,19 +64,37 @@ function extractImports(source: string): string[] {
   return [...modules];
 }
 
-export async function mapRepo(targetDir: string, runner?: TargetRunner): Promise<RepoMap> {
-  const files = (await walkSourceFiles(targetDir, targetDir, runner)).sort();
+function prefixScope(scopeRelPath: string, relPath: string): string {
+  if (scopeRelPath === "") return relPath;
+  return `${scopeRelPath}/${relPath}`;
+}
+
+export async function mapRepo(
+  workDir: string,
+  runner?: TargetRunner,
+  scopeRelPath = "",
+): Promise<RepoMap> {
+  const mapRoot = scopeRelPath === "" ? workDir : join(workDir, scopeRelPath);
+  const localFiles = (await walkSourceFiles(mapRoot, mapRoot, runner)).sort();
+  const files =
+    scopeRelPath === "" ? localFiles : localFiles.map((relPath) => prefixScope(scopeRelPath, relPath));
   const isTestFile = runner ? (relPath: string) => runner.isTestFile(relPath) : defaultIsTestFile;
   const testFiles = files.filter(isTestFile);
   const imports: Record<string, string[]> = {};
 
-  for (const relPath of files) {
-    const source = await readFile(join(targetDir, relPath), "utf8");
+  for (let i = 0; i < localFiles.length; i++) {
+    const source = await readFile(join(mapRoot, localFiles[i]), "utf8");
     const found = extractImports(source);
-    if (found.length > 0) imports[relPath] = found;
+    if (found.length > 0) imports[files[i]] = found;
   }
 
-  const symbols = runner ? await runner.extractSymbols(targetDir, files) : {};
+  const localSymbols = runner ? await runner.extractSymbols(mapRoot, localFiles) : {};
+  const symbols =
+    scopeRelPath === ""
+      ? localSymbols
+      : Object.fromEntries(
+          Object.entries(localSymbols).map(([relPath, value]) => [prefixScope(scopeRelPath, relPath), value]),
+        );
 
   return { files, testFiles, imports, symbols };
 }
