@@ -25,6 +25,13 @@ PreToolUse leash; leash enforcement now lives behind the Backend seam; runs exec
 worktrees and deliver a `helm-tdd/<runId>` branch; and `skills/tdd/SKILL.md` is the cockpit
 router (the Layout section's `skills/` line is now real).
 
+M6 makes feature mode bilingual: a `TestToolchain` seam abstracts every language-coupled
+operation the FSM and gates perform, with `pythonToolchain` (pytest) and `goToolchain`
+(`go test -json`) implementations behind it, selected via the new `language` input on the MCP
+surface; `venvDir` is now python-only (go reads its module from `go.mod` on PATH). v1 Go gaps:
+no mutation gate and no refactor ratchet -- the RED linter and two-assertion RED prompt still
+guard triangulation. `mode: "harden"` and the M0 kata FSM remain Python-only.
+
 ## Layout
 
 ```
