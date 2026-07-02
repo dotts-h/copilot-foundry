@@ -269,4 +269,55 @@ describe("runVerifyLadder", () => {
       "full-suite run produced no parseable results (exit 2)",
     );
   });
+
+  it("makes impacted-subgraph baseline-relative: tolerates an in-scope pre-existing failure and ignores an out-of-scope regression outside the level's own paths", async () => {
+    const { runVerifyLadder: runVerifyLadderUnderTest } = await import("../../src/phases/verify.js");
+
+    dir = mkdtempSync(join(tmpdir(), "verify-ladder-"));
+    writeFileSync(
+      join(dir, "test_scope_a.py"),
+      "def test_ok():\n    assert True\n\n\ndef test_broken():\n    assert False\n",
+    );
+    writeFileSync(join(dir, "test_scope_b.py"), "def test_scope_b():\n    assert True\n");
+    // Present on disk (so a whole-directory verbose scan would see it) but NOT tracked as a
+    // test file in repoMap/scopeReport, so it falls outside the impacted-subgraph level's own paths.
+    writeFileSync(join(dir, "test_outside.py"), "def test_outside():\n    assert False\n");
+
+    const repoMap: RepoMap = {
+      files: ["test_scope_a.py", "test_scope_b.py", "test_outside.py"],
+      testFiles: ["test_scope_a.py", "test_scope_b.py"],
+      imports: {},
+      symbols: {},
+    };
+    const scopeReport: ScopeReport = { inScope: ["test_scope_a.py", "test_scope_b.py"], reason: "test" };
+
+    const result = await runVerifyLadderUnderTest({
+      runner,
+      targetDir: dir,
+      touchedTestPaths: ["test_scope_b.py"],
+      newTestPaths: ["test_scope_b.py"],
+      repoMap,
+      scopeReport,
+      baseline: {
+        tests: [
+          { nodeId: "test_scope_a.py::test_ok", outcome: "passed" },
+          { nodeId: "test_scope_a.py::test_broken", outcome: "failed" },
+          { nodeId: "test_scope_b.py::test_scope_b", outcome: "passed" },
+          { nodeId: "test_outside.py::test_outside", outcome: "passed" },
+        ],
+      },
+    });
+
+    const impacted = result.levels.find((l) => l.level === "impacted-subgraph");
+    // test_scope_a.py was already failing at baseline (not sound), so it is tolerated and the
+    // level passes via the baseline-relative recheck restricted to its own paths.
+    expect(impacted?.passed).toBe(true);
+    expect(impacted?.raw).toContain("test_scope_a.py");
+    // test_outside.py is a baseline-sound path that now regresses, but it is outside the
+    // impacted-subgraph level's own paths, so it must not affect that level. The untouched,
+    // whole-repo full-suite level is the one that catches it.
+    expect(result.levels.map((l) => l.level)).toEqual(["focused", "spec", "impacted-subgraph", "full-suite"]);
+    expect(result.failedLevel).toBe("full-suite");
+    expect(result.passed).toBe(false);
+  });
 });
