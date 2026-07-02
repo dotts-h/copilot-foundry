@@ -32,7 +32,10 @@ function assertAcceptedLedger(ledger: Awaited<ReturnType<typeof runFeature>>): v
   expect(ledger.verifyResult?.passed).toBe(true);
   expect(ledger.acceptanceLedger?.overallAccepted).toBe(true);
   for (const sliceResult of ledger.sliceResults) {
-    expect(sliceResult.mutationScore?.results.find((r) => r.operator === "constant")?.survived).toBe(false);
+    // js/go runners have no "constant" operator (it requires executing the target
+    // function); the parity bar is: every APPLIED operator was killed.
+    expect(sliceResult.mutationScore?.results.find((r) => r.operator === "constant")).toBeUndefined();
+    expect(sliceResult.mutationScore?.score).toBe(1);
   }
   expect(ledger.writebackResult?.committed).toBe(false);
 }
