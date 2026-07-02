@@ -1,29 +1,52 @@
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
-import { runPytest } from "../src/pythonRunner.js";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { createPythonRunner, PYTHON_RED_PROMPT_RULES } from "../../src/runner/pythonRunner.js";
 
 const FIXTURE_VENV = join(process.cwd(), "fixtures", "add-kata", ".venv");
 
-describe("runPytest", () => {
+describe("createPythonRunner", () => {
   let dir: string;
+  let runner: ReturnType<typeof createPythonRunner>;
 
   afterEach(() => {
     if (dir) rmSync(dir, { recursive: true, force: true });
   });
 
+  beforeEach(() => {
+    runner = createPythonRunner(FIXTURE_VENV);
+  });
+
+  it("classifyRun maps exit codes 0/1/other to passed/failed/harness_error", () => {
+    expect(runner.classifyRun({ exitCode: 0, raw: "" })).toBe("passed");
+    expect(runner.classifyRun({ exitCode: 1, raw: "" })).toBe("failed");
+    expect(runner.classifyRun({ exitCode: 2, raw: "" })).toBe("harness_error");
+    expect(runner.classifyRun({ exitCode: 5, raw: "" })).toBe("harness_error");
+  });
+
+  it("testPathKey is identity for python", () => {
+    expect(runner.testPathKey("test_foo.py")).toBe("test_foo.py");
+    expect(runner.testPathKey("pkg/test_foo.py")).toBe("pkg/test_foo.py");
+  });
+
+  it("redPromptRules equals the previously hardcoded import-inside-test-function text", () => {
+    expect(runner.redPromptRules).toBe(PYTHON_RED_PROMPT_RULES);
+    expect(runner.redPromptRules).toContain("import it inside the new test function(s) instead");
+    expect(runner.redPromptRules).toContain("Never modify or remove existing imports.");
+  });
+
   it("returns exit code 0 when all tests pass", async () => {
     dir = mkdtempSync(join(tmpdir(), "pytest-runner-"));
     writeFileSync(join(dir, "test_ok.py"), "def test_ok():\n    assert 1 + 1 == 2\n");
-    const result = await runPytest(FIXTURE_VENV, dir);
+    const result = await runner.runTests(dir);
     expect(result.exitCode).toBe(0);
   });
 
   it("returns exit code 1 when a test fails", async () => {
     dir = mkdtempSync(join(tmpdir(), "pytest-runner-"));
     writeFileSync(join(dir, "test_fail.py"), "def test_fail():\n    assert 1 + 1 == 3\n");
-    const result = await runPytest(FIXTURE_VENV, dir);
+    const result = await runner.runTests(dir);
     expect(result.exitCode).toBe(1);
     expect(result.raw).toMatch(/1 failed/);
   });
@@ -32,7 +55,7 @@ describe("runPytest", () => {
     dir = mkdtempSync(join(tmpdir(), "pytest-runner-"));
     writeFileSync(join(dir, "test_a.py"), "def test_a():\n    assert True\n");
     writeFileSync(join(dir, "test_b.py"), "def test_b():\n    assert False\n");
-    const result = await runPytest(FIXTURE_VENV, dir, "test_a.py");
+    const result = await runner.runTests(dir, "test_a.py");
     expect(result.exitCode).toBe(0);
   });
 
@@ -41,11 +64,11 @@ describe("runPytest", () => {
     writeFileSync(join(dir, "m.py"), "def value():\n    return 1\n");
     writeFileSync(join(dir, "test_m.py"), "from m import value\n\ndef test_value():\n    assert value() == 2\n");
 
-    const first = await runPytest(FIXTURE_VENV, dir, "test_m.py");
+    const first = await runner.runTests(dir, "test_m.py");
     expect(first.exitCode).toBe(1);
 
     writeFileSync(join(dir, "m.py"), "def value():\n    return 2\n");
-    const second = await runPytest(FIXTURE_VENV, dir, "test_m.py");
+    const second = await runner.runTests(dir, "test_m.py");
     expect(second.exitCode).toBe(0);
   });
 
@@ -56,7 +79,7 @@ describe("runPytest", () => {
       "[pytest]\naddopts = --cov=foo --cov-report=term-missing --cov-fail-under=70\n",
     );
     writeFileSync(join(dir, "test_ok.py"), "def test_ok():\n    assert 1 + 1 == 2\n");
-    const result = await runPytest(FIXTURE_VENV, dir);
+    const result = await runner.runTests(dir);
     expect(result.exitCode).toBe(0);
   });
 });

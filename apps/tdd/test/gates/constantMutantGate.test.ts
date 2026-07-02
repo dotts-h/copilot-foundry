@@ -4,9 +4,11 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { runCommand } from "../../src/exec.js";
 import { checkConstantMutant } from "../../src/gates/constantMutantGate.js";
+import { createPythonRunner } from "../../src/runner/pythonRunner.js";
 
 const FIXTURE = join(process.cwd(), "fixtures", "add-kata");
 const VENV = join(FIXTURE, ".venv");
+const runner = createPythonRunner(VENV);
 
 function setupWorkDir(testVariant: string): string {
   const dir = mkdtempSync(join(tmpdir(), "mutant-gate-"));
@@ -26,7 +28,7 @@ describe("constant-mutant gate", () => {
     dir = setupWorkDir("weak_test_add_kata.py");
     const result = await checkConstantMutant({
       workDir: dir,
-      venvDir: VENV,
+      runner,
       implRelPath: "add_kata.py",
       mutantSourcePath: join(FIXTURE, "variants", "constant_mutant.py"),
       testRelPath: "test_add_kata.py",
@@ -38,7 +40,7 @@ describe("constant-mutant gate", () => {
     dir = setupWorkDir("strong_test_add_kata.py");
     const result = await checkConstantMutant({
       workDir: dir,
-      venvDir: VENV,
+      runner,
       implRelPath: "add_kata.py",
       mutantSourcePath: join(FIXTURE, "variants", "constant_mutant.py"),
       testRelPath: "test_add_kata.py",
@@ -50,7 +52,7 @@ describe("constant-mutant gate", () => {
     dir = setupWorkDir("weak_test_add_kata.py");
     await checkConstantMutant({
       workDir: dir,
-      venvDir: VENV,
+      runner,
       implRelPath: "add_kata.py",
       mutantSourcePath: join(FIXTURE, "variants", "constant_mutant.py"),
       testRelPath: "test_add_kata.py",

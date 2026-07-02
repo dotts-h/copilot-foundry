@@ -5,9 +5,9 @@ import { attemptRefactor } from "./gates/refactorGate.js";
 import { classifyRedOutcome, type RedOutcome } from "./gates/redGate.js";
 import { runGreenWithRepair } from "./gates/greenGate.js";
 import type { RedLintResult } from "./gates/redLinter.js";
-import { computeMutationScore, type MutationScoreResult } from "./gates/mutationGate.js";
+import type { MutationScoreResult } from "./gates/mutationGate.js";
 import { mapRepo, type FileSymbols, type RepoMap } from "./phases/map.js";
-import { runBaseline, runPytestVerbose, type BaselineReport } from "./phases/baseline.js";
+import { runBaseline, type BaselineReport } from "./phases/baseline.js";
 import { computeScope, type ScopeReport } from "./phases/scope.js";
 import { planSlices, type PlannedSlice } from "./phases/plan.js";
 import { renderSymbols, SLICE_SYMBOLS_CAP } from "./phases/symbolRender.js";
@@ -17,6 +17,8 @@ import { buildAcceptanceLedger, type AcceptanceLedger } from "./phases/accept.js
 import { writeback, type WritebackResult } from "./phases/writeback.js";
 import { createRunWorkspace, removeRunWorkspace } from "./runWorkspace.js";
 import { writeRunState } from "./runStore.js";
+import { createPythonRunner } from "./runner/pythonRunner.js";
+import type { TargetRunner } from "./runner/types.js";
 import { validateFeatureRunSpec, type FeatureRunSpec } from "./types.js";
 
 export interface SliceExecutionResult {
@@ -77,16 +79,14 @@ function listExistingTestNames(symbols: FileSymbols): string | undefined {
   return `${names.slice(0, 40).join(", ")}, …`;
 }
 
-function buildRedPrompt(slice: PlannedSlice, repoMap: RepoMap): string {
+function buildRedPrompt(slice: PlannedSlice, repoMap: RepoMap, runner: TargetRunner): string {
   const parts = [
-    `Write ONLY a failing pytest test at ${slice.testRelPath} for this behavior: ${slice.description}. ` +
+    `Write ONLY a failing ${runner.testFrameworkName} test at ${slice.testRelPath} for this behavior: ${slice.description}. ` +
       `The implementation lives at ${slice.implRelPath} and does not yet satisfy this behavior. ` +
       "Include at least two assertions with different, non-trivially-related expected values (not just one " +
       "example) so the test actually triangulates the behavior and cannot be satisfied by a function that " +
       "always returns a single constant. " +
-      "If the function or symbol under test does not exist yet in the implementation module, do NOT add it " +
-      "to a module-top import -- import it inside the new test function(s) instead, so the rest of the test " +
-      "module still collects and runs. Never modify or remove existing imports. " +
+      runner.redPromptRules +
       "Do NOT implement or modify the implementation file. Do not create or modify any other file.",
   ];
 
@@ -111,7 +111,7 @@ function buildRedPrompt(slice: PlannedSlice, repoMap: RepoMap): string {
       );
     } else {
       parts.push(
-        `The target function ${slice.functionName} does NOT exist yet in ${slice.implRelPath} — remember the import-inside-the-test-function rule above.`,
+        `The target function ${slice.functionName} does NOT exist yet in ${slice.implRelPath}${runner.missingSymbolRedNote}`,
       );
     }
   }
@@ -211,17 +211,18 @@ export async function runFeature(
 ): Promise<FeatureLedger> {
   validateFeatureRunSpec(spec);
 
+  const runner = createPythonRunner(spec.venvDir);
   const workspace = await createRunWorkspace(spec.targetDir, runId);
   const workDir = workspace.workDir;
   try {
     const startedAt = new Date().toISOString();
     await markProgress(artifactRoot, runId, startedAt, "map", workspace.branchName);
 
-    const repoMap: RepoMap = await mapRepo(workDir, spec.venvDir);
+    const repoMap: RepoMap = await mapRepo(workDir, runner);
     await writeArtifact(artifactRoot, runId, "map", repoMap);
 
     await markProgress(artifactRoot, runId, startedAt, "baseline", workspace.branchName);
-    const baseline = await runBaseline(spec.venvDir, workDir);
+    const baseline = await runBaseline(runner, workDir);
     await writeArtifact(artifactRoot, runId, "baseline", baseline);
 
     await markProgress(artifactRoot, runId, startedAt, "scope", workspace.branchName);
@@ -294,14 +295,14 @@ export async function runFeature(
       await backend.runPhase({
         cwd: workDir,
         model: spec.models.red,
-        prompt: buildRedPrompt(slice, repoMap),
+        prompt: buildRedPrompt(slice, repoMap, runner),
         lockedPaths: [slice.implRelPath], // RED must not implement — now structurally enforced
       });
       await commitAll(workDir, `red: ${runId} slice ${i}`);
 
       const redResult = await classifyRedOutcome({
         targetDir: workDir,
-        venvDir: spec.venvDir,
+        runner,
         testRelPath: slice.testRelPath,
         functionName: slice.functionName,
         baseline,
@@ -326,7 +327,7 @@ export async function runFeature(
       const greenResult = await runGreenWithRepair({
         backend,
         targetDir: workDir,
-        venvDir: spec.venvDir,
+        runner,
         testRelPath: slice.testRelPath,
         greenModel: spec.models.green,
         escalationModel: spec.models.escalation,
@@ -356,6 +357,7 @@ export async function runFeature(
       const refactorResult = await attemptRefactor({
         backend,
         targetDir: workDir,
+        runner,
         venvDir: spec.venvDir,
         implRelPath: slice.implRelPath,
         testRelPath: slice.testRelPath,
@@ -370,9 +372,8 @@ export async function runFeature(
       const checkpoint = await buildCheckpoint(workDir, i, sliceStartCommit);
       await writeArtifact(artifactRoot, runId, `checkpoint-slice-${i}`, checkpoint);
 
-      const mutationScore = await computeMutationScore({
+      const mutationScore = await runner.computeMutationScore({
         workDir,
-        venvDir: spec.venvDir,
         implRelPath: slice.implRelPath,
         functionName: slice.functionName,
         testRelPath: slice.testRelPath,
@@ -408,7 +409,7 @@ export async function runFeature(
         mutationScore,
       });
 
-      const postSliceScan = await runPytestVerbose(spec.venvDir, workDir);
+      const postSliceScan = await runner.runTestsVerbose(workDir);
       const postSliceFailingPaths = new Set(
         postSliceScan.tests
           .filter((t) => t.outcome === "failed" || t.outcome === "error")
@@ -429,7 +430,7 @@ export async function runFeature(
 
     const touchedTestPaths = sliceResults.map((r) => r.slice.testRelPath);
     const verifyResult = await runVerifyLadder({
-      venvDir: spec.venvDir,
+      runner,
       targetDir: workDir,
       touchedTestPaths,
       newTestPaths: touchedTestPaths,

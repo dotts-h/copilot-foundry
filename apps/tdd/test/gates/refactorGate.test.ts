@@ -4,9 +4,11 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { runCommand } from "../../src/exec.js";
 import { attemptRefactor, measurePythonFile } from "../../src/gates/refactorGate.js";
+import { createPythonRunner } from "../../src/runner/pythonRunner.js";
 import { ScriptedBackend, writeImpl } from "../helpers/fakeBackend.js";
 
 const FIXTURE_VENV = join(process.cwd(), "fixtures", "add-kata", ".venv");
+const runner = createPythonRunner(FIXTURE_VENV);
 
 async function seedRepo(implSource: string): Promise<string> {
   const dir = mkdtempSync(join(tmpdir(), "refactor-gate-"));
@@ -54,6 +56,7 @@ describe("attemptRefactor", () => {
     const result = await attemptRefactor({
       backend,
       targetDir: dir,
+      runner,
       venvDir: FIXTURE_VENV,
       implRelPath: "add_kata.py",
       testRelPath: "test_add_kata.py",
@@ -73,6 +76,7 @@ describe("attemptRefactor", () => {
     const result = await attemptRefactor({
       backend,
       targetDir: dir,
+      runner,
       venvDir: FIXTURE_VENV,
       implRelPath: "add_kata.py",
       testRelPath: "test_add_kata.py",
@@ -92,6 +96,7 @@ describe("attemptRefactor", () => {
     const result = await attemptRefactor({
       backend,
       targetDir: dir,
+      runner,
       venvDir: FIXTURE_VENV,
       implRelPath: "add_kata.py",
       testRelPath: "test_add_kata.py",
@@ -116,6 +121,7 @@ describe("attemptRefactor", () => {
     const result = await attemptRefactor({
       backend,
       targetDir: dir,
+      runner,
       venvDir: FIXTURE_VENV,
       implRelPath: "add_kata.py",
       testRelPath: "test_add_kata.py",

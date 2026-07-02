@@ -5,11 +5,8 @@ import { writeLeashConfig } from "./backend/cursorLeash.js";
 import type { Backend } from "./backend/types.js";
 import { runCommand } from "./exec.js";
 import { checkDiffGuard, revertPaths } from "./gates/diffGuard.js";
-import { runPytest } from "./pythonRunner.js";
+import { createPythonRunner } from "./runner/pythonRunner.js";
 import type { RunSpec, SliceLedger } from "./types.js";
-
-const PYTEST_ALL_PASSED = 0;
-const PYTEST_TESTS_FAILED = 1;
 
 export async function runSlice(
   spec: RunSpec,
@@ -17,6 +14,8 @@ export async function runSlice(
   artifactRoot: string,
   runId: string,
 ): Promise<SliceLedger> {
+  const runner = createPythonRunner(spec.venvDir);
+
   await writeLeashConfig(spec.targetDir, [spec.testRelPath]);
 
   const redResult = await backend.runPhase({
@@ -29,8 +28,8 @@ export async function runSlice(
   await runCommand("git", ["commit", "-q", "-m", `red: ${runId}`], { cwd: spec.targetDir });
 
   const testFileExists = existsSync(join(spec.targetDir, spec.testRelPath));
-  const redPytest = await runPytest(spec.venvDir, spec.targetDir, spec.testRelPath);
-  const redGatePassed = testFileExists && redPytest.exitCode === PYTEST_TESTS_FAILED;
+  const redPytest = await runner.runTests(spec.targetDir, spec.testRelPath);
+  const redGatePassed = testFileExists && runner.classifyRun(redPytest) === "failed";
 
   const greenResult = await backend.runPhase({
     cwd: spec.targetDir,
@@ -43,8 +42,8 @@ export async function runSlice(
     await revertPaths(spec.targetDir, diffGuard.offendingPaths);
   }
 
-  const greenPytest = await runPytest(spec.venvDir, spec.targetDir, spec.testRelPath);
-  const greenGatePassed = greenPytest.exitCode === PYTEST_ALL_PASSED;
+  const greenPytest = await runner.runTests(spec.targetDir, spec.testRelPath);
+  const greenGatePassed = runner.classifyRun(greenPytest) === "passed";
 
   const ledger: SliceLedger = {
     runId,

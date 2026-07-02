@@ -3,8 +3,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { classifyCharacterizationOutcome } from "../../src/gates/characterizationGate.js";
+import { createPythonRunner } from "../../src/runner/pythonRunner.js";
 
 const FIXTURE_VENV = join(process.cwd(), "fixtures", "add-kata", ".venv");
+const runner = createPythonRunner(FIXTURE_VENV);
 
 describe("classifyCharacterizationOutcome", () => {
   let dir: string;
@@ -24,7 +26,7 @@ describe("classifyCharacterizationOutcome", () => {
 
     const result = await classifyCharacterizationOutcome({
       targetDir: dir,
-      venvDir: FIXTURE_VENV,
+      runner,
       testRelPath: "test_legacy_kata.py",
     });
 
@@ -42,7 +44,7 @@ describe("classifyCharacterizationOutcome", () => {
 
     const result = await classifyCharacterizationOutcome({
       targetDir: dir,
-      venvDir: FIXTURE_VENV,
+      runner,
       testRelPath: "test_legacy_kata.py",
     });
 
@@ -55,7 +57,7 @@ describe("classifyCharacterizationOutcome", () => {
 
     const result = await classifyCharacterizationOutcome({
       targetDir: dir,
-      venvDir: FIXTURE_VENV,
+      runner,
       testRelPath: "test_legacy_kata.py",
     });
 

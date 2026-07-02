@@ -1,5 +1,4 @@
-import { join } from "node:path";
-import { runCommand } from "../exec.js";
+import type { TargetRunner } from "../runner/types.js";
 
 export type TestOutcome = "passed" | "failed" | "error" | "skipped";
 
@@ -11,8 +10,6 @@ export interface BaselineTestResult {
 export interface BaselineReport {
   tests: BaselineTestResult[];
 }
-
-const NO_TESTS_COLLECTED = 5;
 
 const OUTCOME_MARKERS: Record<string, TestOutcome> = {
   PASSED: "passed",
@@ -31,25 +28,7 @@ export function parsePytestVerboseOutput(raw: string): BaselineTestResult[] {
   return results;
 }
 
-export async function runPytestVerbose(
-  venvDir: string,
-  cwd: string,
-): Promise<{ exitCode: number; tests: BaselineTestResult[] }> {
-  const pytestBin = join(venvDir, "bin", "pytest");
-  const result = await runCommand(pytestBin, ["-o", "addopts=", "--tb=no", "-v"], {
-    cwd,
-    env: { PYTHONDONTWRITEBYTECODE: "1" },
-    timeoutMs: 60_000,
-  });
-
-  if (result.exitCode === NO_TESTS_COLLECTED) {
-    return { exitCode: result.exitCode, tests: [] };
-  }
-
-  return { exitCode: result.exitCode, tests: parsePytestVerboseOutput(result.stdout) };
-}
-
-export async function runBaseline(venvDir: string, targetDir: string): Promise<BaselineReport> {
-  const { tests } = await runPytestVerbose(venvDir, targetDir);
+export async function runBaseline(runner: TargetRunner, targetDir: string): Promise<BaselineReport> {
+  const { tests } = await runner.runTestsVerbose(targetDir);
   return { tests };
 }

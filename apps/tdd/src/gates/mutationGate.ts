@@ -1,7 +1,7 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { runCommand } from "../exec.js";
-import { runPytest } from "../pythonRunner.js";
+import { createPythonRunner } from "../runner/pythonRunner.js";
 
 export interface MutationResult {
   attempted: boolean;
@@ -123,8 +123,9 @@ export async function checkConstantMutantGeneric(opts: {
 
   try {
     await writeFile(implPath, parsed.mutatedSource);
-    const pytestResult = await runPytest(opts.venvDir, opts.workDir, opts.testRelPath);
-    const mutantSurvived = pytestResult.exitCode === 0;
+    const runner = createPythonRunner(opts.venvDir);
+    const pytestResult = await runner.runTests(opts.workDir, opts.testRelPath);
+    const mutantSurvived = runner.classifyRun(pytestResult) === "passed";
     return {
       attempted: true,
       mutantSurvived,
@@ -237,8 +238,9 @@ async function applyOperatorMutation(opts: {
   const originalSource = await readFile(implPath, "utf8");
   try {
     await writeFile(implPath, parsed.mutatedSource);
-    const pytestResult = await runPytest(opts.venvDir, opts.workDir, opts.testRelPath);
-    return { operator: opts.operator, applied: true, survived: pytestResult.exitCode === 0 };
+    const runner = createPythonRunner(opts.venvDir);
+    const pytestResult = await runner.runTests(opts.workDir, opts.testRelPath);
+    return { operator: opts.operator, applied: true, survived: runner.classifyRun(pytestResult) === "passed" };
   } finally {
     await writeFile(implPath, originalSource);
   }

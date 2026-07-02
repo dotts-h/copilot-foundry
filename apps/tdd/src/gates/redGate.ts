@@ -1,8 +1,9 @@
 import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { runPytest } from "../pythonRunner.js";
-import { runPytestVerbose, type BaselineReport } from "../phases/baseline.js";
+import { isMissingSymbolError } from "../runner/pythonRunner.js";
+import type { TargetRunner } from "../runner/types.js";
+import type { BaselineReport } from "../phases/baseline.js";
 import { lintRedTest, type RedLintResult } from "./redLinter.js";
 
 export type RedOutcome =
@@ -19,28 +20,11 @@ export interface RedGateResult {
   preexistingRegressionPaths: string[];
 }
 
-const ALL_PASSED = 0;
-const TESTS_FAILED = 1;
-
-function escapeRegExp(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
-// A new symbol not yet existing in the implementation module is the canonical first RED of TDD --
-// distinguish that from a trash/broken test so it doesn't get misclassified as a collection_error.
-export function isMissingSymbolCollectionError(raw: string, functionName: string): boolean {
-  const name = escapeRegExp(functionName);
-  const patterns = [
-    new RegExp(`cannot import name '${name}'`),
-    new RegExp(`has no attribute '${name}'`),
-    new RegExp(`NameError: name '${name}'`),
-  ];
-  return patterns.some((pattern) => pattern.test(raw));
-}
+export { isMissingSymbolError as isMissingSymbolCollectionError };
 
 export async function classifyRedOutcome(opts: {
   targetDir: string;
-  venvDir: string;
+  runner: TargetRunner;
   testRelPath: string;
   functionName: string;
   baseline: BaselineReport;
@@ -59,31 +43,35 @@ export async function classifyRedOutcome(opts: {
   const testSource = await readFile(testFilePath, "utf8");
   const lint = lintRedTest(testSource);
 
-  const firstRun = await runPytest(opts.venvDir, opts.targetDir, opts.testRelPath);
-  const secondRun = await runPytest(opts.venvDir, opts.targetDir, opts.testRelPath);
+  const firstRun = await opts.runner.runTests(opts.targetDir, opts.testRelPath);
+  const secondRun = await opts.runner.runTests(opts.targetDir, opts.testRelPath);
+
+  const firstClass = opts.runner.classifyRun(firstRun);
+  const secondClass = opts.runner.classifyRun(secondRun);
 
   let outcome: RedOutcome;
-  if (firstRun.exitCode === ALL_PASSED && secondRun.exitCode === ALL_PASSED) {
+  if (firstClass === "passed" && secondClass === "passed") {
     outcome = "already_green";
-  } else if (firstRun.exitCode === TESTS_FAILED && secondRun.exitCode === TESTS_FAILED) {
+  } else if (firstClass === "failed" && secondClass === "failed") {
     outcome = "failed_as_expected";
   } else if (
-    [ALL_PASSED, TESTS_FAILED].includes(firstRun.exitCode) &&
-    [ALL_PASSED, TESTS_FAILED].includes(secondRun.exitCode)
+    (firstClass === "passed" && secondClass === "failed") ||
+    (firstClass === "failed" && secondClass === "passed")
   ) {
     outcome = "flaky";
   } else if (
-    ![ALL_PASSED, TESTS_FAILED].includes(firstRun.exitCode) &&
-    ![ALL_PASSED, TESTS_FAILED].includes(secondRun.exitCode) &&
-    isMissingSymbolCollectionError(firstRun.raw, opts.functionName) &&
-    isMissingSymbolCollectionError(secondRun.raw, opts.functionName)
+    firstClass === "harness_error" &&
+    secondClass === "harness_error" &&
+    opts.runner.isMissingSymbolError(firstRun.raw, opts.functionName) &&
+    opts.runner.isMissingSymbolError(secondRun.raw, opts.functionName)
   ) {
     outcome = "failed_as_expected";
   } else {
     outcome = "collection_error";
   }
 
-  const { tests: currentResults } = await runPytestVerbose(opts.venvDir, opts.targetDir);
+  const { tests: currentResults } = await opts.runner.runTestsVerbose(opts.targetDir);
+  const testPathKey = opts.runner.testPathKey(opts.testRelPath);
   const currentlyFailingPaths = new Set(
     currentResults
       .filter((t) => t.outcome === "failed" || t.outcome === "error")
@@ -93,7 +81,7 @@ export async function classifyRedOutcome(opts: {
     opts.baseline.tests.filter((t) => t.outcome === "passed").map((t) => t.nodeId.split("::")[0]),
   );
   const preexistingRegressionPaths = [...currentlyFailingPaths].filter(
-    (path) => path !== opts.testRelPath && baselinePassingPaths.has(path),
+    (path) => path !== testPathKey && baselinePassingPaths.has(path),
   );
 
   return {

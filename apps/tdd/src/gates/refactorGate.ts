@@ -2,7 +2,7 @@ import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { Backend } from "../backend/types.js";
 import { runCommand } from "../exec.js";
-import { runPytest } from "../pythonRunner.js";
+import type { TargetRunner } from "../runner/types.js";
 import { checkDiffGuard, revertPaths } from "./diffGuard.js";
 
 export interface RefactorMetrics {
@@ -38,6 +38,7 @@ export async function measurePythonFile(venvDir: string, filePath: string): Prom
 export interface RefactorAttemptOptions {
   backend: Backend;
   targetDir: string;
+  runner: TargetRunner;
   venvDir: string;
   implRelPath: string;
   testRelPath: string;
@@ -74,8 +75,8 @@ export async function attemptRefactor(opts: RefactorAttemptOptions): Promise<Ref
     await revertPaths(opts.targetDir, guard.offendingPaths);
   }
 
-  const pytestResult = await runPytest(opts.venvDir, opts.targetDir, opts.testRelPath);
-  if (pytestResult.exitCode !== 0) {
+  const pytestResult = await opts.runner.runTests(opts.targetDir, opts.testRelPath);
+  if (opts.runner.classifyRun(pytestResult) !== "passed") {
     await writeFile(implPath, originalSource);
     return { attempted: true, applied: false, before, after: null, reason: "refactor broke the test; reverted" };
   }

@@ -1,10 +1,10 @@
 import { copyFile, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { runPytest } from "../pythonRunner.js";
+import type { TargetRunner } from "../runner/types.js";
 
 export interface ConstantMutantCheckOptions {
   workDir: string;
-  venvDir: string;
+  runner: TargetRunner;
   implRelPath: string;
   mutantSourcePath: string;
   testRelPath: string;
@@ -22,8 +22,8 @@ export async function checkConstantMutant(
 
   try {
     await copyFile(opts.mutantSourcePath, implPath);
-    const pytestResult = await runPytest(opts.venvDir, opts.workDir, opts.testRelPath);
-    return { mutantSurvived: pytestResult.exitCode === 0 };
+    const pytestResult = await opts.runner.runTests(opts.workDir, opts.testRelPath);
+    return { mutantSurvived: opts.runner.classifyRun(pytestResult) === "passed" };
   } finally {
     await writeFile(implPath, original);
   }
