@@ -36,7 +36,7 @@ export async function runPytestVerbose(
   cwd: string,
 ): Promise<{ exitCode: number; tests: BaselineTestResult[] }> {
   const pytestBin = join(venvDir, "bin", "pytest");
-  const result = await runCommand(pytestBin, ["--tb=no", "-v"], {
+  const result = await runCommand(pytestBin, ["-o", "addopts=", "--tb=no", "-v"], {
     cwd,
     env: { PYTHONDONTWRITEBYTECODE: "1" },
     timeoutMs: 60_000,

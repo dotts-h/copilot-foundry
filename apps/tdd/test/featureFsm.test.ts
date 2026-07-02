@@ -89,6 +89,7 @@ describe("runFeature", () => {
     expect(ledger.writebackResult?.committed).toBe(false);
     expect(backend.calls[0].lockedPaths).toBeUndefined(); // plan
     expect(backend.calls[1].lockedPaths).toEqual(["add_kata.py"]); // RED locks impl
+    expect(backend.calls[1].prompt).toContain("import it inside the new test function(s) instead");
     expect(backend.calls[2].lockedPaths).toEqual(["test_add_kata.py"]); // GREEN locks test
 
     expect(ledger.workspace.branchName).toBe("helm-tdd/run-feature-1");

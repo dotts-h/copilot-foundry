@@ -48,4 +48,15 @@ describe("runPytest", () => {
     const second = await runPytest(FIXTURE_VENV, dir, "test_m.py");
     expect(second.exitCode).toBe(0);
   });
+
+  it("neutralizes a target repo's ini addopts so its coverage floor cannot fail the gate", async () => {
+    dir = mkdtempSync(join(tmpdir(), "pytest-runner-"));
+    writeFileSync(
+      join(dir, "pytest.ini"),
+      "[pytest]\naddopts = --cov=foo --cov-report=term-missing --cov-fail-under=70\n",
+    );
+    writeFileSync(join(dir, "test_ok.py"), "def test_ok():\n    assert 1 + 1 == 2\n");
+    const result = await runPytest(FIXTURE_VENV, dir);
+    expect(result.exitCode).toBe(0);
+  });
 });
