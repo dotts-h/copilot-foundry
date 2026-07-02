@@ -1,5 +1,4 @@
-import { join } from "node:path";
-import { runCommand } from "../exec.js";
+import type { TestToolchain } from "../toolchain.js";
 import type { RepoMap } from "./map.js";
 import type { ScopeReport } from "./scope.js";
 
@@ -18,30 +17,13 @@ export interface VerifyResult {
 }
 
 export interface VerifyLadderOptions {
-  venvDir: string;
+  toolchain: TestToolchain;
   targetDir: string;
   touchedTestPaths: string[];
   newTestPaths: string[];
   repoMap: RepoMap;
   scopeReport: ScopeReport;
 }
-
-async function runPytestOnPaths(
-  venvDir: string,
-  cwd: string,
-  paths: string[],
-): Promise<{ exitCode: number; raw: string }> {
-  const pytestBin = join(venvDir, "bin", "pytest");
-  const args = ["-q", "-o", "addopts=", ...(paths.length > 0 ? paths : ["."])];
-  const result = await runCommand(pytestBin, args, {
-    cwd,
-    env: { PYTHONDONTWRITEBYTECODE: "1" },
-    timeoutMs: 60_000,
-  });
-  return { exitCode: result.exitCode, raw: result.stdout + result.stderr };
-}
-
-const ALL_PASSED = 0;
 
 export async function runVerifyLadder(opts: VerifyLadderOptions): Promise<VerifyResult> {
   const inScopeTestFiles = opts.repoMap.testFiles.filter((f) => opts.scopeReport.inScope.includes(f));
@@ -58,10 +40,9 @@ export async function runVerifyLadder(opts: VerifyLadderOptions): Promise<Verify
 
   const results: VerifyLevelResult[] = [];
   for (const { level, paths } of levels) {
-    const outcome = await runPytestOnPaths(opts.venvDir, opts.targetDir, paths);
-    const passed = outcome.exitCode === ALL_PASSED;
-    results.push({ level, passed, raw: outcome.raw });
-    if (!passed) {
+    const outcome = await opts.toolchain.runOnPaths(opts.targetDir, paths);
+    results.push({ level, passed: outcome.passed, raw: outcome.raw });
+    if (!outcome.passed) {
       return { passed: false, failedLevel: level, levels: results };
     }
   }

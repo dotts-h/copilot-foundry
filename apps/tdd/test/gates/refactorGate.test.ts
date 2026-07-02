@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { runCommand } from "../../src/exec.js";
 import { attemptRefactor, measurePythonFile } from "../../src/gates/refactorGate.js";
+import { createToolchain } from "../../src/toolchain.js";
 import { ScriptedBackend, writeImpl } from "../helpers/fakeBackend.js";
 
 const FIXTURE_VENV = join(process.cwd(), "fixtures", "add-kata", ".venv");
@@ -55,6 +56,7 @@ describe("attemptRefactor", () => {
       backend,
       targetDir: dir,
       venvDir: FIXTURE_VENV,
+      toolchain: await createToolchain("python", FIXTURE_VENV, dir),
       implRelPath: "add_kata.py",
       testRelPath: "test_add_kata.py",
       refactorModel: "fake-refactor",
@@ -74,6 +76,7 @@ describe("attemptRefactor", () => {
       backend,
       targetDir: dir,
       venvDir: FIXTURE_VENV,
+      toolchain: await createToolchain("python", FIXTURE_VENV, dir),
       implRelPath: "add_kata.py",
       testRelPath: "test_add_kata.py",
       refactorModel: "fake-refactor",
@@ -93,6 +96,7 @@ describe("attemptRefactor", () => {
       backend,
       targetDir: dir,
       venvDir: FIXTURE_VENV,
+      toolchain: await createToolchain("python", FIXTURE_VENV, dir),
       implRelPath: "add_kata.py",
       testRelPath: "test_add_kata.py",
       refactorModel: "fake-refactor",
@@ -117,6 +121,7 @@ describe("attemptRefactor", () => {
       backend,
       targetDir: dir,
       venvDir: FIXTURE_VENV,
+      toolchain: await createToolchain("python", FIXTURE_VENV, dir),
       implRelPath: "add_kata.py",
       testRelPath: "test_add_kata.py",
       refactorModel: "fake-refactor",

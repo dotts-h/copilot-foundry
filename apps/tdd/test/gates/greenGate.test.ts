@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { runCommand } from "../../src/exec.js";
 import { runGreenWithRepair } from "../../src/gates/greenGate.js";
+import { createToolchain } from "../../src/toolchain.js";
 import { ScriptedBackend, writeImpl } from "../helpers/fakeBackend.js";
 
 const FIXTURE_VENV = join(process.cwd(), "fixtures", "add-kata", ".venv");
@@ -36,7 +37,7 @@ describe("runGreenWithRepair", () => {
     const result = await runGreenWithRepair({
       backend,
       targetDir: dir,
-      venvDir: FIXTURE_VENV,
+      toolchain: await createToolchain("python", FIXTURE_VENV, dir),
       testRelPath: "test_add_kata.py",
       greenModel: "fake-green",
       escalationModel: "fake-escalation",
@@ -60,7 +61,7 @@ describe("runGreenWithRepair", () => {
     const result = await runGreenWithRepair({
       backend,
       targetDir: dir,
-      venvDir: FIXTURE_VENV,
+      toolchain: await createToolchain("python", FIXTURE_VENV, dir),
       testRelPath: "test_add_kata.py",
       greenModel: "fake-green",
       escalationModel: "fake-escalation",
@@ -85,7 +86,7 @@ describe("runGreenWithRepair", () => {
     const result = await runGreenWithRepair({
       backend,
       targetDir: dir,
-      venvDir: FIXTURE_VENV,
+      toolchain: await createToolchain("python", FIXTURE_VENV, dir),
       testRelPath: "test_add_kata.py",
       greenModel: "fake-green",
       escalationModel: "fake-escalation",
@@ -108,7 +109,7 @@ describe("runGreenWithRepair", () => {
     const result = await runGreenWithRepair({
       backend,
       targetDir: dir,
-      venvDir: FIXTURE_VENV,
+      toolchain: await createToolchain("python", FIXTURE_VENV, dir),
       testRelPath: "test_add_kata.py",
       greenModel: "fake-green",
       escalationModel: "fake-escalation",
@@ -133,7 +134,7 @@ describe("runGreenWithRepair", () => {
     const result = await runGreenWithRepair({
       backend,
       targetDir: dir,
-      venvDir: FIXTURE_VENV,
+      toolchain: await createToolchain("python", FIXTURE_VENV, dir),
       testRelPath: "test_add_kata.py",
       greenModel: "fake-green",
       escalationModel: "fake-escalation",

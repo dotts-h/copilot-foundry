@@ -1,13 +1,13 @@
 import { writeArtifact } from "./artifacts/vault.js";
 import type { Backend } from "./backend/types.js";
 import { runCommand } from "./exec.js";
-import { attemptRefactor } from "./gates/refactorGate.js";
+import { attemptRefactor, type RefactorAttemptResult } from "./gates/refactorGate.js";
 import { classifyRedOutcome, type RedOutcome } from "./gates/redGate.js";
 import { runGreenWithRepair } from "./gates/greenGate.js";
 import type { RedLintResult } from "./gates/redLinter.js";
 import { computeMutationScore, type MutationScoreResult } from "./gates/mutationGate.js";
 import { mapRepo, type RepoMap } from "./phases/map.js";
-import { runBaseline, runPytestVerbose, type BaselineReport } from "./phases/baseline.js";
+import type { BaselineReport } from "./phases/baseline.js";
 import { computeScope, type ScopeReport } from "./phases/scope.js";
 import { planSlices, type PlannedSlice } from "./phases/plan.js";
 import { buildCheckpoint } from "./phases/checkpoint.js";
@@ -16,6 +16,7 @@ import { buildAcceptanceLedger, type AcceptanceLedger } from "./phases/accept.js
 import { writeback, type WritebackResult } from "./phases/writeback.js";
 import { createRunWorkspace, removeRunWorkspace } from "./runWorkspace.js";
 import { writeRunState } from "./runStore.js";
+import { createToolchain } from "./toolchain.js";
 import { validateFeatureRunSpec, type FeatureRunSpec } from "./types.js";
 
 export interface SliceExecutionResult {
@@ -62,20 +63,6 @@ function summarizeBaseline(baseline: BaselineReport): { total: number; passed: n
     passed: baseline.tests.filter((t) => t.outcome === "passed").length,
     failed: baseline.tests.filter((t) => t.outcome === "failed" || t.outcome === "error").length,
   };
-}
-
-function buildRedPrompt(slice: PlannedSlice): string {
-  return (
-    `Write ONLY a failing pytest test at ${slice.testRelPath} for this behavior: ${slice.description}. ` +
-    `The implementation lives at ${slice.implRelPath} and does not yet satisfy this behavior. ` +
-    "Include at least two assertions with different, non-trivially-related expected values (not just one " +
-    "example) so the test actually triangulates the behavior and cannot be satisfied by a function that " +
-    "always returns a single constant. " +
-    "If the function or symbol under test does not exist yet in the implementation module, do NOT add it " +
-    "to a module-top import -- import it inside the new test function(s) instead, so the rest of the test " +
-    "module still collects and runs. Never modify or remove existing imports. " +
-    "Do NOT implement or modify the implementation file. Do not create or modify any other file."
-  );
 }
 
 function buildGreenPrompt(slice: PlannedSlice, lastFailureOutput: string | undefined): string {
@@ -158,25 +145,25 @@ export async function runFeature(
   runId: string,
 ): Promise<FeatureLedger> {
   validateFeatureRunSpec(spec);
-  // validateFeatureRunSpec guarantees venvDir is set on this (currently python-only) path;
-  // the toolchain seam that removes this narrowing lands in M6 Task 3.
-  const venvDir = spec.venvDir as string;
 
   const workspace = await createRunWorkspace(spec.targetDir, runId);
   const workDir = workspace.workDir;
   try {
+    const toolchain = await createToolchain(spec.language, spec.venvDir, workDir);
+
     const startedAt = new Date().toISOString();
     await markProgress(artifactRoot, runId, startedAt, "map", workspace.branchName);
 
-    const repoMap: RepoMap = await mapRepo(workDir);
+    const repoMap: RepoMap = await mapRepo(workDir, spec.language);
     await writeArtifact(artifactRoot, runId, "map", repoMap);
 
     await markProgress(artifactRoot, runId, startedAt, "baseline", workspace.branchName);
-    const baseline = await runBaseline(venvDir, workDir);
+    const { tests: baselineTests } = await toolchain.runVerbose(workDir);
+    const baseline: BaselineReport = { tests: baselineTests };
     await writeArtifact(artifactRoot, runId, "baseline", baseline);
 
     await markProgress(artifactRoot, runId, startedAt, "scope", workspace.branchName);
-    const scopeReport = computeScope(repoMap, spec.targetHint, spec.scope);
+    const scopeReport = computeScope(repoMap, spec.targetHint, spec.scope, spec.language);
     await writeArtifact(artifactRoot, runId, "scope", scopeReport);
 
     await markProgress(artifactRoot, runId, startedAt, "plan", workspace.branchName);
@@ -187,6 +174,7 @@ export async function runFeature(
       featureDescription: spec.featureDescription,
       repoMap,
       scopeReport,
+      planNouns: toolchain.planNouns,
     });
     validateSlicePaths(slices);
     await writeArtifact(artifactRoot, runId, "plan", slices);
@@ -245,14 +233,14 @@ export async function runFeature(
       await backend.runPhase({
         cwd: workDir,
         model: spec.models.red,
-        prompt: buildRedPrompt(slice),
+        prompt: toolchain.buildRedPrompt(slice),
         lockedPaths: [slice.implRelPath], // RED must not implement — now structurally enforced
       });
       await commitAll(workDir, `red: ${runId} slice ${i}`);
 
       const redResult = await classifyRedOutcome({
         targetDir: workDir,
-        venvDir,
+        toolchain,
         testRelPath: slice.testRelPath,
         functionName: slice.functionName,
         baseline,
@@ -277,7 +265,7 @@ export async function runFeature(
       const greenResult = await runGreenWithRepair({
         backend,
         targetDir: workDir,
-        venvDir,
+        toolchain,
         testRelPath: slice.testRelPath,
         greenModel: spec.models.green,
         escalationModel: spec.models.escalation,
@@ -303,15 +291,18 @@ export async function runFeature(
 
       await commitAll(workDir, `green: ${runId} slice ${i}`);
 
-      const refactorResult = await attemptRefactor({
-        backend,
-        targetDir: workDir,
-        venvDir,
-        implRelPath: slice.implRelPath,
-        testRelPath: slice.testRelPath,
-        refactorModel: spec.models.green,
-        buildPrompt: () => buildRefactorPrompt(slice),
-      });
+      const refactorResult: RefactorAttemptResult = toolchain.supportsRefactor
+        ? await attemptRefactor({
+            backend,
+            targetDir: workDir,
+            venvDir: spec.venvDir as string, // supportsRefactor is python-only in M6; validateFeatureRunSpec guarantees this
+            toolchain,
+            implRelPath: slice.implRelPath,
+            testRelPath: slice.testRelPath,
+            refactorModel: spec.models.green,
+            buildPrompt: () => buildRefactorPrompt(slice),
+          })
+        : { attempted: false, applied: false, before: null, after: null, reason: "refactor not supported for this language" };
 
       if (refactorResult.applied) {
         await commitAll(workDir, `refactor: ${runId} slice ${i}`);
@@ -320,13 +311,21 @@ export async function runFeature(
       const checkpoint = await buildCheckpoint(workDir, i, sliceStartCommit);
       await writeArtifact(artifactRoot, runId, `checkpoint-slice-${i}`, checkpoint);
 
-      const mutationScore = await computeMutationScore({
-        workDir,
-        venvDir,
-        implRelPath: slice.implRelPath,
-        functionName: slice.functionName,
-        testRelPath: slice.testRelPath,
-      });
+      const mutationScore: MutationScoreResult = toolchain.supportsMutationGate
+        ? await computeMutationScore({
+            workDir,
+            venvDir: spec.venvDir as string, // supportsMutationGate is python-only in M6; validateFeatureRunSpec guarantees this
+            implRelPath: slice.implRelPath,
+            functionName: slice.functionName,
+            testRelPath: slice.testRelPath,
+          })
+        : {
+            results: [{ operator: "constant", applied: false, survived: null }],
+            killedCount: 0,
+            survivedCount: 0,
+            attemptedCount: 0,
+            score: 1,
+          };
 
       const constantMutant = mutationScore.results.find((r) => r.operator === "constant");
       if (constantMutant?.applied && constantMutant.survived === true) {
@@ -358,7 +357,7 @@ export async function runFeature(
         mutationScore,
       });
 
-      const postSliceScan = await runPytestVerbose(venvDir, workDir);
+      const postSliceScan = await toolchain.runVerbose(workDir);
       const postSliceFailingPaths = new Set(
         postSliceScan.tests
           .filter((t) => t.outcome === "failed" || t.outcome === "error")
@@ -379,7 +378,7 @@ export async function runFeature(
 
     const touchedTestPaths = sliceResults.map((r) => r.slice.testRelPath);
     const verifyResult = await runVerifyLadder({
-      venvDir,
+      toolchain,
       targetDir: workDir,
       touchedTestPaths,
       newTestPaths: touchedTestPaths,

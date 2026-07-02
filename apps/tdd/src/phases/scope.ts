@@ -1,4 +1,4 @@
-import type { WorkflowScope } from "../types.js";
+import type { Language, WorkflowScope } from "../types.js";
 import type { RepoMap } from "./map.js";
 
 export interface ScopeReport {
@@ -26,6 +26,8 @@ export function computeScope(
   map: RepoMap,
   targetHint: string | undefined,
   scopeLevel: WorkflowScope,
+  language: Language,
+  modulePath?: string,
 ): ScopeReport {
   if (targetHint === undefined) {
     return {

@@ -16,6 +16,7 @@ export interface PlanSlicesOptions {
   featureDescription: string;
   repoMap: RepoMap;
   scopeReport: ScopeReport;
+  planNouns: { repo: string; identifier: string };
 }
 
 function buildPlanPrompt(opts: PlanSlicesOptions): string {
@@ -31,9 +32,9 @@ function buildPlanPrompt(opts: PlanSlicesOptions): string {
     "",
     "Respond with ONLY a JSON array, no prose, no markdown fences. Each element must be exactly:",
     '{"description": string, "implRelPath": string, "testRelPath": string, "functionName": string}',
-    "implRelPath and testRelPath are relative paths inside the target Python repo. functionName is the",
-    'exact name of the single Python function this slice implements or modifies (a valid Python',
-    'identifier, e.g. "add" or "reverse_words") -- used downstream for mutation testing.',
+    `implRelPath and testRelPath are relative paths inside the target ${opts.planNouns.repo} repo. functionName`,
+    `is the exact name of the single ${opts.planNouns.identifier} this slice implements or modifies -- used`,
+    "downstream for mutation testing.",
   ].join("\n");
 }
 

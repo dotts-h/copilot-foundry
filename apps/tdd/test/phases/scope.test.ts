@@ -13,25 +13,25 @@ const MAP: RepoMap = {
 
 describe("computeScope", () => {
   it("defaults to the whole repo when no targetHint is given (conservative default)", () => {
-    const report = computeScope(MAP, undefined, "node");
+    const report = computeScope(MAP, undefined, "node", "python");
     expect(report.inScope.sort()).toEqual([...MAP.files].sort());
     expect(report.reason).toMatch(/no targetHint/);
   });
 
   it("falls back to the whole repo when targetHint is not found in the map", () => {
-    const report = computeScope(MAP, "does_not_exist.py", "node");
+    const report = computeScope(MAP, "does_not_exist.py", "node", "python");
     expect(report.inScope.sort()).toEqual([...MAP.files].sort());
     expect(report.reason).toMatch(/not found/);
   });
 
   it("scope=node includes the target plus its reverse-dependents (callers)", () => {
-    const report = computeScope(MAP, "strings_kata.py", "node");
+    const report = computeScope(MAP, "strings_kata.py", "node", "python");
     expect(report.inScope.sort()).toEqual(["strings_kata.py", "test_strings_kata.py"]);
     expect(report.inScope).not.toContain("unrelated.py");
   });
 
   it("scope=repo always returns every file regardless of targetHint", () => {
-    const report = computeScope(MAP, "strings_kata.py", "repo");
+    const report = computeScope(MAP, "strings_kata.py", "repo", "python");
     expect(report.inScope.sort()).toEqual([...MAP.files].sort());
   });
 
@@ -41,7 +41,7 @@ describe("computeScope", () => {
       testFiles: ["pkg/test_a.py"],
       imports: {},
     };
-    const report = computeScope(nestedMap, "pkg/a.py", "package");
+    const report = computeScope(nestedMap, "pkg/a.py", "package", "python");
     expect(report.inScope.sort()).toEqual(["pkg/a.py", "pkg/test_a.py"]);
   });
 });

@@ -26,7 +26,7 @@ describe("mapRepo", () => {
     mkdirSync(join(dir, "__pycache__"), { recursive: true });
     writeFileSync(join(dir, "__pycache__", "ignored2.py"), "raise RuntimeError('should never be scanned')");
 
-    const map = await mapRepo(dir);
+    const map = await mapRepo(dir, "python");
 
     expect(map.files.sort()).toEqual(["strings_kata.py", "test_strings_kata.py"]);
     expect(map.testFiles).toEqual(["test_strings_kata.py"]);
@@ -35,7 +35,7 @@ describe("mapRepo", () => {
   });
 
   it("returns empty collections for an empty repo", async () => {
-    const map = await mapRepo(dir);
+    const map = await mapRepo(dir, "python");
     expect(map.files).toEqual([]);
     expect(map.testFiles).toEqual([]);
     expect(map.imports).toEqual({});

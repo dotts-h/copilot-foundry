@@ -6,6 +6,7 @@ import type { ScopeReport } from "../../src/phases/scope.js";
 
 const EMPTY_MAP: RepoMap = { files: [], testFiles: [], imports: {} };
 const REPO_SCOPE: ScopeReport = { inScope: [], reason: "scope=repo" };
+const PYTHON_NOUNS = { repo: "Python", identifier: "Python function (a valid Python identifier)" };
 
 describe("planSlices", () => {
   it("parses a well-formed JSON array of slices from the model", async () => {
@@ -35,6 +36,7 @@ describe("planSlices", () => {
       featureDescription: "string utilities",
       repoMap: EMPTY_MAP,
       scopeReport: REPO_SCOPE,
+      planNouns: PYTHON_NOUNS,
     });
 
     expect(slices).toHaveLength(2);
@@ -59,6 +61,7 @@ describe("planSlices", () => {
       featureDescription: "x",
       repoMap: EMPTY_MAP,
       scopeReport: REPO_SCOPE,
+      planNouns: PYTHON_NOUNS,
     });
 
     expect(backend.calls[0].prompt).toContain("Do NOT split a single function's input domain");
@@ -79,6 +82,7 @@ describe("planSlices", () => {
       featureDescription: "x",
       repoMap: EMPTY_MAP,
       scopeReport: REPO_SCOPE,
+      planNouns: PYTHON_NOUNS,
     });
 
     expect(slices).toEqual([{ description: "a", implRelPath: "x.py", testRelPath: "test_x.py", functionName: "a" }]);
@@ -95,6 +99,7 @@ describe("planSlices", () => {
         featureDescription: "x",
         repoMap: EMPTY_MAP,
         scopeReport: REPO_SCOPE,
+        planNouns: PYTHON_NOUNS,
       }),
     ).rejects.toThrow(/could not find a JSON array/);
   });
@@ -112,6 +117,7 @@ describe("planSlices", () => {
         featureDescription: "x",
         repoMap: EMPTY_MAP,
         scopeReport: REPO_SCOPE,
+        planNouns: PYTHON_NOUNS,
       }),
     ).rejects.toThrow(/missing required fields/);
   });
@@ -127,6 +133,7 @@ describe("planSlices", () => {
         featureDescription: "x",
         repoMap: EMPTY_MAP,
         scopeReport: REPO_SCOPE,
+        planNouns: PYTHON_NOUNS,
       }),
     ).rejects.toThrow(/non-empty/);
   });

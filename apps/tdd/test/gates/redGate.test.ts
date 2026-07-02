@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { classifyRedOutcome, isMissingSymbolCollectionError } from "../../src/gates/redGate.js";
 import { runBaseline } from "../../src/phases/baseline.js";
+import { createToolchain } from "../../src/toolchain.js";
 
 const FIXTURE_VENV = join(process.cwd(), "fixtures", "add-kata", ".venv");
 
@@ -21,7 +22,7 @@ describe("classifyRedOutcome", () => {
 
     const result = await classifyRedOutcome({
       targetDir: dir,
-      venvDir: FIXTURE_VENV,
+      toolchain: await createToolchain("python", FIXTURE_VENV, dir),
       testRelPath: "test_new.py",
       functionName: "irrelevant",
       baseline,
@@ -39,7 +40,7 @@ describe("classifyRedOutcome", () => {
 
     const result = await classifyRedOutcome({
       targetDir: dir,
-      venvDir: FIXTURE_VENV,
+      toolchain: await createToolchain("python", FIXTURE_VENV, dir),
       testRelPath: "test_new.py",
       functionName: "irrelevant",
       baseline,
@@ -55,7 +56,7 @@ describe("classifyRedOutcome", () => {
 
     const result = await classifyRedOutcome({
       targetDir: dir,
-      venvDir: FIXTURE_VENV,
+      toolchain: await createToolchain("python", FIXTURE_VENV, dir),
       testRelPath: "test_missing.py",
       functionName: "irrelevant",
       baseline,
@@ -72,7 +73,7 @@ describe("classifyRedOutcome", () => {
 
     const result = await classifyRedOutcome({
       targetDir: dir,
-      venvDir: FIXTURE_VENV,
+      toolchain: await createToolchain("python", FIXTURE_VENV, dir),
       testRelPath: "test_new.py",
       functionName: "irrelevant",
       baseline,
@@ -92,7 +93,7 @@ describe("classifyRedOutcome", () => {
 
     const result = await classifyRedOutcome({
       targetDir: dir,
-      venvDir: FIXTURE_VENV,
+      toolchain: await createToolchain("python", FIXTURE_VENV, dir),
       testRelPath: "test_new.py",
       functionName: "irrelevant",
       baseline,
@@ -116,7 +117,7 @@ describe("classifyRedOutcome", () => {
 
     const result = await classifyRedOutcome({
       targetDir: dir,
-      venvDir: FIXTURE_VENV,
+      toolchain: await createToolchain("python", FIXTURE_VENV, dir),
       testRelPath: "test_new.py",
       functionName: "expected_session_fraction",
       baseline,
@@ -134,7 +135,7 @@ describe("classifyRedOutcome", () => {
 
     const result = await classifyRedOutcome({
       targetDir: dir,
-      venvDir: FIXTURE_VENV,
+      toolchain: await createToolchain("python", FIXTURE_VENV, dir),
       testRelPath: "test_new.py",
       functionName: "expected_session_fraction",
       baseline,

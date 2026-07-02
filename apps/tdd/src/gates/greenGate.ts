@@ -1,11 +1,11 @@
 import { checkDiffGuard, revertPaths } from "./diffGuard.js";
-import { runPytest } from "../pythonRunner.js";
 import type { Backend } from "../backend/types.js";
+import type { TestToolchain } from "../toolchain.js";
 
 export interface GreenGateOptions {
   backend: Backend;
   targetDir: string;
-  venvDir: string;
+  toolchain: TestToolchain;
   testRelPath: string;
   greenModel: string;
   escalationModel: string;
@@ -39,12 +39,12 @@ async function attempt(
     await revertPaths(opts.targetDir, guard.offendingPaths);
   }
 
-  const pytestResult = await runPytest(opts.venvDir, opts.targetDir, opts.testRelPath);
+  const scoped = await opts.toolchain.runScoped(opts.targetDir, opts.testRelPath);
   return {
-    passed: pytestResult.exitCode === 0,
+    passed: scoped.verdict === "passed",
     diffGuardViolated: guard.violated,
     diffGuardOffendingPaths: guard.offendingPaths,
-    rawOutput: pytestResult.raw,
+    rawOutput: scoped.raw,
   };
 }
 

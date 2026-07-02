@@ -1,9 +1,9 @@
 import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { runPytest } from "../pythonRunner.js";
-import { runPytestVerbose, type BaselineReport } from "../phases/baseline.js";
-import { lintRedTest, type RedLintResult } from "./redLinter.js";
+import type { BaselineReport } from "../phases/baseline.js";
+import type { TestToolchain } from "../toolchain.js";
+import type { RedLintResult } from "./redLinter.js";
 
 export type RedOutcome =
   | "failed_as_expected"
@@ -18,9 +18,6 @@ export interface RedGateResult {
   lint: RedLintResult;
   preexistingRegressionPaths: string[];
 }
-
-const ALL_PASSED = 0;
-const TESTS_FAILED = 1;
 
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -40,7 +37,7 @@ export function isMissingSymbolCollectionError(raw: string, functionName: string
 
 export async function classifyRedOutcome(opts: {
   targetDir: string;
-  venvDir: string;
+  toolchain: TestToolchain;
   testRelPath: string;
   functionName: string;
   baseline: BaselineReport;
@@ -57,33 +54,30 @@ export async function classifyRedOutcome(opts: {
   }
 
   const testSource = await readFile(testFilePath, "utf8");
-  const lint = lintRedTest(testSource);
+  const lint = opts.toolchain.lintRedTest(testSource);
 
-  const firstRun = await runPytest(opts.venvDir, opts.targetDir, opts.testRelPath);
-  const secondRun = await runPytest(opts.venvDir, opts.targetDir, opts.testRelPath);
+  const firstRun = await opts.toolchain.runScoped(opts.targetDir, opts.testRelPath);
+  const secondRun = await opts.toolchain.runScoped(opts.targetDir, opts.testRelPath);
 
   let outcome: RedOutcome;
-  if (firstRun.exitCode === ALL_PASSED && secondRun.exitCode === ALL_PASSED) {
+  if (firstRun.verdict === "passed" && secondRun.verdict === "passed") {
     outcome = "already_green";
-  } else if (firstRun.exitCode === TESTS_FAILED && secondRun.exitCode === TESTS_FAILED) {
+  } else if (firstRun.verdict === "tests_failed" && secondRun.verdict === "tests_failed") {
     outcome = "failed_as_expected";
-  } else if (
-    [ALL_PASSED, TESTS_FAILED].includes(firstRun.exitCode) &&
-    [ALL_PASSED, TESTS_FAILED].includes(secondRun.exitCode)
-  ) {
+  } else if (firstRun.verdict !== "infra_error" && secondRun.verdict !== "infra_error") {
     outcome = "flaky";
   } else if (
-    ![ALL_PASSED, TESTS_FAILED].includes(firstRun.exitCode) &&
-    ![ALL_PASSED, TESTS_FAILED].includes(secondRun.exitCode) &&
-    isMissingSymbolCollectionError(firstRun.raw, opts.functionName) &&
-    isMissingSymbolCollectionError(secondRun.raw, opts.functionName)
+    firstRun.verdict === "infra_error" &&
+    secondRun.verdict === "infra_error" &&
+    opts.toolchain.isMissingSymbolError(firstRun.raw, opts.functionName) &&
+    opts.toolchain.isMissingSymbolError(secondRun.raw, opts.functionName)
   ) {
     outcome = "failed_as_expected";
   } else {
     outcome = "collection_error";
   }
 
-  const { tests: currentResults } = await runPytestVerbose(opts.venvDir, opts.targetDir);
+  const { tests: currentResults } = await opts.toolchain.runVerbose(opts.targetDir);
   const currentlyFailingPaths = new Set(
     currentResults
       .filter((t) => t.outcome === "failed" || t.outcome === "error")
@@ -93,7 +87,7 @@ export async function classifyRedOutcome(opts: {
     opts.baseline.tests.filter((t) => t.outcome === "passed").map((t) => t.nodeId.split("::")[0]),
   );
   const preexistingRegressionPaths = [...currentlyFailingPaths].filter(
-    (path) => path !== opts.testRelPath && baselinePassingPaths.has(path),
+    (path) => path !== opts.toolchain.pathUnit(opts.testRelPath) && baselinePassingPaths.has(path),
   );
 
   return {

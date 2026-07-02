@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { runVerifyLadder } from "../../src/phases/verify.js";
 import type { RepoMap } from "../../src/phases/map.js";
 import type { ScopeReport } from "../../src/phases/scope.js";
+import { createToolchain } from "../../src/toolchain.js";
 
 const FIXTURE_VENV = join(process.cwd(), "fixtures", "add-kata", ".venv");
 
@@ -28,7 +29,7 @@ describe("runVerifyLadder", () => {
     const scopeReport: ScopeReport = { inScope: ["test_a.py", "test_b.py"], reason: "test" };
 
     const result = await runVerifyLadder({
-      venvDir: FIXTURE_VENV,
+      toolchain: await createToolchain("python", FIXTURE_VENV, dir),
       targetDir: dir,
       touchedTestPaths: ["test_a.py"],
       newTestPaths: ["test_a.py"],
@@ -54,7 +55,7 @@ describe("runVerifyLadder", () => {
     const scopeReport: ScopeReport = { inScope: ["test_a.py", "test_b.py"], reason: "test" };
 
     const result = await runVerifyLadder({
-      venvDir: FIXTURE_VENV,
+      toolchain: await createToolchain("python", FIXTURE_VENV, dir),
       targetDir: dir,
       touchedTestPaths: ["test_a.py"],
       newTestPaths: ["test_a.py"],
@@ -79,7 +80,7 @@ describe("runVerifyLadder", () => {
     const scopeReport: ScopeReport = { inScope: ["test_a.py"], reason: "test" };
 
     const result = await runVerifyLadder({
-      venvDir: FIXTURE_VENV,
+      toolchain: await createToolchain("python", FIXTURE_VENV, dir),
       targetDir: dir,
       touchedTestPaths: ["test_a.py"],
       newTestPaths: ["test_a.py"],
@@ -99,7 +100,7 @@ describe("runVerifyLadder", () => {
     const scopeReport: ScopeReport = { inScope: [], reason: "test" };
 
     const result = await runVerifyLadder({
-      venvDir: FIXTURE_VENV,
+      toolchain: await createToolchain("python", FIXTURE_VENV, dir),
       targetDir: dir,
       touchedTestPaths: ["test_a.py"],
       newTestPaths: ["test_a.py"],

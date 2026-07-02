@@ -1,5 +1,6 @@
 import { readdir, readFile } from "node:fs/promises";
 import { join, relative } from "node:path";
+import type { Language } from "../types.js";
 
 export interface RepoMap {
   files: string[];
@@ -39,7 +40,11 @@ function extractImports(source: string): string[] {
   return [...modules];
 }
 
-export async function mapRepo(targetDir: string): Promise<RepoMap> {
+export async function mapRepo(targetDir: string, language: Language): Promise<RepoMap> {
+  if (language === "go") {
+    throw new Error("mapRepo: go not implemented until task 4");
+  }
+
   const files = (await walkPythonFiles(targetDir, targetDir)).sort();
   const testFiles = files.filter(isTestFile);
   const imports: Record<string, string[]> = {};
