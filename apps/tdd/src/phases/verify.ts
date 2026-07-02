@@ -71,8 +71,51 @@ export async function runVerifyLadder(opts: VerifyLadderOptions): Promise<Verify
     }
 
     const outcome = await opts.runner.runTestsOnPaths(opts.targetDir, paths);
-    const passed = opts.runner.classifyRun(outcome) === "passed";
-    results.push({ level, passed, raw: outcome.raw });
+    const initialPassed = opts.runner.classifyRun(outcome) === "passed";
+
+    if (initialPassed || level !== "impacted-subgraph") {
+      results.push({ level, passed: initialPassed, raw: outcome.raw });
+      if (!initialPassed) {
+        return { passed: false, failedLevel: level, levels: results };
+      }
+      continue;
+    }
+
+    // impacted-subgraph is baseline-relative: a failure here only fails the level if it
+    // regresses a path that was sound at baseline. Pre-existing baseline failures among the
+    // level's own paths are tolerated.
+    const verbose = await opts.runner.runTestsVerbose(opts.targetDir);
+    if (verbose.tests.length === 0 && verbose.exitCode !== 0) {
+      const raw = `impacted-subgraph run produced no parseable results (exit ${verbose.exitCode})`;
+      results.push({ level, passed: false, raw });
+      return { passed: false, failedLevel: level, levels: results };
+    }
+
+    const ownPathKeys = new Set(paths.map((p) => opts.runner.testPathKey(p)));
+    const baselineFailingPaths = new Set(
+      opts.baseline.tests
+        .filter((t) => t.outcome === "failed" || t.outcome === "error")
+        .map((t) => t.nodeId.split("::")[0]),
+    );
+    const currentFailingOwn = new Set(
+      verbose.tests
+        .filter(
+          (t) => (t.outcome === "failed" || t.outcome === "error") && ownPathKeys.has(t.nodeId.split("::")[0]),
+        )
+        .map((t) => t.nodeId.split("::")[0]),
+    );
+
+    const newRegressions = [...currentFailingOwn].filter((p) => !baselineFailingPaths.has(p));
+    const tolerated = [...currentFailingOwn].filter((p) => baselineFailingPaths.has(p));
+
+    const passed = newRegressions.length === 0;
+    const raw = passed
+      ? tolerated.length > 0
+        ? `tolerated pre-existing baseline failures: ${tolerated.join(", ")}`
+        : outcome.raw
+      : `new failures vs baseline: ${newRegressions.join(", ")}`;
+
+    results.push({ level, passed, raw });
     if (!passed) {
       return { passed: false, failedLevel: level, levels: results };
     }
