@@ -41,6 +41,7 @@ describe.skipIf(!RUN_LIVE)("runFeature (live E2E, feature mode)", () => {
       mode: "feature",
       targetDir,
       venvDir: join(FIXTURE, ".venv"),
+      language: "python",
       scope: "repo",
       hitl: "auto",
       featureDescription:

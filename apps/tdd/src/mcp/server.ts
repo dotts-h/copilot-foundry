@@ -22,10 +22,12 @@ export function createTddMcpServer(deps: { artifactRoot: string }): McpServer {
       description:
         "Start a helm-tdd feature-mode run (map->baseline->scope->plan->RED/GREEN slice loop). " +
         "Returns immediately with a runId; poll tdd_workflow_status/tdd_workflow_result. " +
-        "Defaults to the Claude Agent SDK on Sonnet 5 as the backend.",
+        "Defaults to the Claude Agent SDK on Sonnet 5 as the backend. " +
+        "Supports python (pytest, venvDir required) and go (go toolchain on PATH, venvDir omitted).",
       inputSchema: {
         targetDir: z.string(),
-        venvDir: z.string(),
+        venvDir: z.string().optional(),
+        language: z.enum(["python", "go"]).default("python"),
         featureDescription: z.string(),
         scope: z.enum(["node", "module", "package", "repo"]).default("repo"),
         hitl: z.enum(["plan-only", "auto"]).default("auto"),
@@ -46,6 +48,7 @@ export function createTddMcpServer(deps: { artifactRoot: string }): McpServer {
     async ({
       targetDir,
       venvDir,
+      language,
       featureDescription,
       scope,
       hitl,
@@ -70,6 +73,7 @@ export function createTddMcpServer(deps: { artifactRoot: string }): McpServer {
         mode: "feature",
         targetDir,
         venvDir,
+        language,
         scope,
         hitl,
         featureDescription,

@@ -58,10 +58,13 @@ export function resolveModels(kind: BackendKind, overrides?: Partial<ModelRoutin
   };
 }
 
+export type Language = "python" | "go";
+
 export interface FeatureRunSpec {
   mode: WorkflowMode;
   targetDir: string;
-  venvDir: string;
+  venvDir?: string;
+  language: Language;
   scope: WorkflowScope;
   hitl: HitlMode;
   featureDescription: string;
@@ -94,5 +97,8 @@ export function validateFeatureRunSpec(spec: FeatureRunSpec): void {
   }
   if (spec.featureDescription.trim().length === 0) {
     throw new Error("validateFeatureRunSpec: featureDescription must not be empty");
+  }
+  if (spec.language === "python" && (spec.venvDir === undefined || spec.venvDir.trim() === "")) {
+    throw new Error('validateFeatureRunSpec: language "python" requires venvDir (a venv with pytest)');
   }
 }

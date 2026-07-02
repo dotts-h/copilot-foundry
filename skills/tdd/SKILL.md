@@ -9,7 +9,8 @@ You are the cockpit, not the implementer. NEVER implement the feature yourself �
 
 1. Call the `helm-tdd` MCP server's `tdd_workflow_start` with:
    - `targetDir`: absolute path to the target repo (must be a git repo with at least one commit)
-   - `venvDir`: absolute path to the repo's Python venv (pytest installed)
+   - `venvDir`: absolute path to the repo's Python venv (pytest installed) — **Python targets only; omit for Go**
+   - `language`: `"python"` (default) or `"go"`
    - `featureDescription`: one clear sentence describing the feature
    - `backend`: `"claude"` (default — Claude Agent SDK on Sonnet 5) or `"cursor"`
    - `hitl`: `"plan-only"` to preview the slice plan without executing; `"auto"` to run fully

@@ -158,6 +158,9 @@ export async function runFeature(
   runId: string,
 ): Promise<FeatureLedger> {
   validateFeatureRunSpec(spec);
+  // validateFeatureRunSpec guarantees venvDir is set on this (currently python-only) path;
+  // the toolchain seam that removes this narrowing lands in M6 Task 3.
+  const venvDir = spec.venvDir as string;
 
   const workspace = await createRunWorkspace(spec.targetDir, runId);
   const workDir = workspace.workDir;
@@ -169,7 +172,7 @@ export async function runFeature(
     await writeArtifact(artifactRoot, runId, "map", repoMap);
 
     await markProgress(artifactRoot, runId, startedAt, "baseline", workspace.branchName);
-    const baseline = await runBaseline(spec.venvDir, workDir);
+    const baseline = await runBaseline(venvDir, workDir);
     await writeArtifact(artifactRoot, runId, "baseline", baseline);
 
     await markProgress(artifactRoot, runId, startedAt, "scope", workspace.branchName);
@@ -249,7 +252,7 @@ export async function runFeature(
 
       const redResult = await classifyRedOutcome({
         targetDir: workDir,
-        venvDir: spec.venvDir,
+        venvDir,
         testRelPath: slice.testRelPath,
         functionName: slice.functionName,
         baseline,
@@ -274,7 +277,7 @@ export async function runFeature(
       const greenResult = await runGreenWithRepair({
         backend,
         targetDir: workDir,
-        venvDir: spec.venvDir,
+        venvDir,
         testRelPath: slice.testRelPath,
         greenModel: spec.models.green,
         escalationModel: spec.models.escalation,
@@ -303,7 +306,7 @@ export async function runFeature(
       const refactorResult = await attemptRefactor({
         backend,
         targetDir: workDir,
-        venvDir: spec.venvDir,
+        venvDir,
         implRelPath: slice.implRelPath,
         testRelPath: slice.testRelPath,
         refactorModel: spec.models.green,
@@ -319,7 +322,7 @@ export async function runFeature(
 
       const mutationScore = await computeMutationScore({
         workDir,
-        venvDir: spec.venvDir,
+        venvDir,
         implRelPath: slice.implRelPath,
         functionName: slice.functionName,
         testRelPath: slice.testRelPath,
@@ -355,7 +358,7 @@ export async function runFeature(
         mutationScore,
       });
 
-      const postSliceScan = await runPytestVerbose(spec.venvDir, workDir);
+      const postSliceScan = await runPytestVerbose(venvDir, workDir);
       const postSliceFailingPaths = new Set(
         postSliceScan.tests
           .filter((t) => t.outcome === "failed" || t.outcome === "error")
@@ -376,7 +379,7 @@ export async function runFeature(
 
     const touchedTestPaths = sliceResults.map((r) => r.slice.testRelPath);
     const verifyResult = await runVerifyLadder({
-      venvDir: spec.venvDir,
+      venvDir,
       targetDir: workDir,
       touchedTestPaths,
       newTestPaths: touchedTestPaths,

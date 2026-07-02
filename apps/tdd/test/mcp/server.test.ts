@@ -5,7 +5,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createBackend, createTddMcpServer } from "../../src/mcp/server.js";
 import { ClaudeBackend } from "../../src/backend/claudeBackend.js";
 import { CursorBackend } from "../../src/backend/cursorBackend.js";
-import { DEFAULT_MODELS_BY_BACKEND } from "../../src/types.js";
+import { runFeature } from "../../src/featureFsm.js";
+import { DEFAULT_MODELS_BY_BACKEND, validateFeatureRunSpec } from "../../src/types.js";
 
 let capturedSpec: unknown;
 
@@ -137,5 +138,34 @@ describe("tdd MCP server (feature mode)", () => {
   it("createBackend maps backend kinds to the matching Backend implementation", () => {
     expect(createBackend("claude")).toBeInstanceOf(ClaudeBackend);
     expect(createBackend("cursor")).toBeInstanceOf(CursorBackend);
+  });
+
+  it("starting a go run without venvDir does not error at the schema layer", async () => {
+    const server = createTddMcpServer({ artifactRoot });
+    const { venvDir: _venvDir, ...argsWithoutVenvDir } = BASE_ARGS;
+    const result = await callTool(server, "tdd_workflow_start", { ...argsWithoutVenvDir, language: "go" });
+    const parsed = JSON.parse(result.content[0].text);
+    expect(typeof parsed.runId).toBe("string");
+  });
+
+  it("starting a python run without venvDir surfaces the validation error via run state, not an unhandled rejection", async () => {
+    vi.mocked(runFeature).mockImplementationOnce(async (spec) => {
+      validateFeatureRunSpec(spec as Parameters<typeof validateFeatureRunSpec>[0]);
+      throw new Error("unreachable: validateFeatureRunSpec should have thrown");
+    });
+
+    const server = createTddMcpServer({ artifactRoot });
+    const { venvDir: _venvDir, ...argsWithoutVenvDir } = BASE_ARGS;
+    const startResult = await callTool(server, "tdd_workflow_start", {
+      ...argsWithoutVenvDir,
+      language: "python",
+    });
+    const { runId } = JSON.parse(startResult.content[0].text);
+
+    await new Promise((resolve) => setTimeout(resolve, 300));
+
+    const state = JSON.parse((await callTool(server, "tdd_workflow_status", { runId })).content[0].text);
+    expect(state.status).toBe("error");
+    expect(state.error).toMatch(/venvDir/);
   });
 });

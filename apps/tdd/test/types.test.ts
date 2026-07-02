@@ -6,6 +6,7 @@ function baseSpec(overrides: Partial<FeatureRunSpec> = {}): FeatureRunSpec {
     mode: "feature",
     targetDir: "/tmp/whatever",
     venvDir: "/tmp/whatever/.venv",
+    language: "python",
     scope: "repo",
     hitl: "auto",
     featureDescription: "add string utilities",
@@ -42,6 +43,18 @@ describe("validateFeatureRunSpec", () => {
     expect(() =>
       validateFeatureRunSpec(baseSpec({ scope: "galaxy" as unknown as FeatureRunSpec["scope"] })),
     ).toThrow(/unknown scope/);
+  });
+
+  it("python spec without venvDir is rejected", () => {
+    const spec = baseSpec({ language: "python" });
+    delete (spec as Partial<FeatureRunSpec>).venvDir;
+    expect(() => validateFeatureRunSpec(spec)).toThrow(/venvDir/);
+  });
+
+  it("go spec without venvDir is accepted", () => {
+    const spec = baseSpec({ language: "go" });
+    delete (spec as Partial<FeatureRunSpec>).venvDir;
+    expect(() => validateFeatureRunSpec(spec)).not.toThrow();
   });
 });
 
