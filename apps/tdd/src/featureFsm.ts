@@ -97,7 +97,7 @@ function validateSlicePaths(slices: PlannedSlice[]): void {
     }
     if (!SAFE_IDENTIFIER.test(slice.functionName)) {
       throw new Error(
-        `runFeature: planned slice functionName "${slice.functionName}" is not a valid Python identifier`,
+        `runFeature: planned slice functionName "${slice.functionName}" is not a valid function identifier`,
       );
     }
   }

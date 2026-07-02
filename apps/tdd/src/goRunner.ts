@@ -68,7 +68,9 @@ export async function runGoTest(
   targetRelPath?: string,
 ): Promise<{ verdict: "passed" | "tests_failed" | "infra_error"; raw: string }> {
   const pkg = targetRelPath === undefined ? "./..." : goPackageArg(targetRelPath);
-  const { exitCode, raw } = await runGo(["test", "-json", pkg], cwd);
+  // -count=1 defeats go's test result cache: the RED gate runs twice on purpose to detect
+  // nondeterminism, and a cached second run can never diverge from the first.
+  const { exitCode, raw } = await runGo(["test", "-json", "-count=1", pkg], cwd);
   const { buildFailed } = parseGoTestJson(raw);
 
   let verdict: "passed" | "tests_failed" | "infra_error";
@@ -86,7 +88,7 @@ export async function runGoTest(
 export async function runGoTestVerbose(
   cwd: string,
 ): Promise<{ tests: BaselineTestResult[]; raw: string }> {
-  const { raw } = await runGo(["test", "-json", "./..."], cwd);
+  const { raw } = await runGo(["test", "-json", "-count=1", "./..."], cwd);
   const { tests } = parseGoTestJson(raw);
   return { tests, raw };
 }
