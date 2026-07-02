@@ -24,6 +24,7 @@ describe("runVerifyLadder", () => {
       files: ["test_a.py", "test_b.py"],
       testFiles: ["test_a.py", "test_b.py"],
       imports: {},
+      symbols: {},
     };
     const scopeReport: ScopeReport = { inScope: ["test_a.py", "test_b.py"], reason: "test" };
 
@@ -50,6 +51,7 @@ describe("runVerifyLadder", () => {
       files: ["test_a.py", "test_b.py"],
       testFiles: ["test_a.py", "test_b.py"],
       imports: {},
+      symbols: {},
     };
     const scopeReport: ScopeReport = { inScope: ["test_a.py", "test_b.py"], reason: "test" };
 
@@ -75,7 +77,7 @@ describe("runVerifyLadder", () => {
     );
     writeFileSync(join(dir, "test_a.py"), "def test_a():\n    assert True\n");
 
-    const repoMap: RepoMap = { files: ["test_a.py"], testFiles: ["test_a.py"], imports: {} };
+    const repoMap: RepoMap = { files: ["test_a.py"], testFiles: ["test_a.py"], imports: {}, symbols: {} };
     const scopeReport: ScopeReport = { inScope: ["test_a.py"], reason: "test" };
 
     const result = await runVerifyLadder({
@@ -95,7 +97,7 @@ describe("runVerifyLadder", () => {
     dir = mkdtempSync(join(tmpdir(), "verify-ladder-"));
     writeFileSync(join(dir, "test_a.py"), "def test_a():\n    assert True\n");
 
-    const repoMap: RepoMap = { files: ["test_a.py"], testFiles: [], imports: {} };
+    const repoMap: RepoMap = { files: ["test_a.py"], testFiles: [], imports: {}, symbols: {} };
     const scopeReport: ScopeReport = { inScope: [], reason: "test" };
 
     const result = await runVerifyLadder({

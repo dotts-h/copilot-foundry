@@ -6,10 +6,11 @@ import { classifyRedOutcome, type RedOutcome } from "./gates/redGate.js";
 import { runGreenWithRepair } from "./gates/greenGate.js";
 import type { RedLintResult } from "./gates/redLinter.js";
 import { computeMutationScore, type MutationScoreResult } from "./gates/mutationGate.js";
-import { mapRepo, type RepoMap } from "./phases/map.js";
+import { mapRepo, type FileSymbols, type RepoMap } from "./phases/map.js";
 import { runBaseline, runPytestVerbose, type BaselineReport } from "./phases/baseline.js";
 import { computeScope, type ScopeReport } from "./phases/scope.js";
 import { planSlices, type PlannedSlice } from "./phases/plan.js";
+import { renderSymbols, SLICE_SYMBOLS_CAP } from "./phases/symbolRender.js";
 import { buildCheckpoint } from "./phases/checkpoint.js";
 import { runVerifyLadder, type VerifyResult } from "./phases/verify.js";
 import { buildAcceptanceLedger, type AcceptanceLedger } from "./phases/accept.js";
@@ -64,27 +65,78 @@ function summarizeBaseline(baseline: BaselineReport): { total: number; passed: n
   };
 }
 
-function buildRedPrompt(slice: PlannedSlice): string {
-  return (
-    `Write ONLY a failing pytest test at ${slice.testRelPath} for this behavior: ${slice.description}. ` +
-    `The implementation lives at ${slice.implRelPath} and does not yet satisfy this behavior. ` +
-    "Include at least two assertions with different, non-trivially-related expected values (not just one " +
-    "example) so the test actually triangulates the behavior and cannot be satisfied by a function that " +
-    "always returns a single constant. " +
-    "If the function or symbol under test does not exist yet in the implementation module, do NOT add it " +
-    "to a module-top import -- import it inside the new test function(s) instead, so the rest of the test " +
-    "module still collects and runs. Never modify or remove existing imports. " +
-    "Do NOT implement or modify the implementation file. Do not create or modify any other file."
-  );
+function targetExistsInImpl(symbols: FileSymbols, functionName: string): boolean {
+  if (symbols.functions.some((f) => f.name === functionName)) return true;
+  return symbols.classes.some((c) => c.methods.some((m) => m.name === functionName));
 }
 
-function buildGreenPrompt(slice: PlannedSlice, lastFailureOutput: string | undefined): string {
+function listExistingTestNames(symbols: FileSymbols): string | undefined {
+  const names = symbols.functions.filter((f) => f.name.startsWith("test_")).map((f) => f.name);
+  if (names.length === 0) return undefined;
+  if (names.length <= 40) return names.join(", ");
+  return `${names.slice(0, 40).join(", ")}, …`;
+}
+
+function buildRedPrompt(slice: PlannedSlice, repoMap: RepoMap): string {
+  const parts = [
+    `Write ONLY a failing pytest test at ${slice.testRelPath} for this behavior: ${slice.description}. ` +
+      `The implementation lives at ${slice.implRelPath} and does not yet satisfy this behavior. ` +
+      "Include at least two assertions with different, non-trivially-related expected values (not just one " +
+      "example) so the test actually triangulates the behavior and cannot be satisfied by a function that " +
+      "always returns a single constant. " +
+      "If the function or symbol under test does not exist yet in the implementation module, do NOT add it " +
+      "to a module-top import -- import it inside the new test function(s) instead, so the rest of the test " +
+      "module still collects and runs. Never modify or remove existing imports. " +
+      "Do NOT implement or modify the implementation file. Do not create or modify any other file.",
+  ];
+
+  const implSymbols = renderSymbols(repoMap, [slice.implRelPath], SLICE_SYMBOLS_CAP);
+  if (implSymbols) {
+    parts.push(`Current symbols in the implementation module:\n${implSymbols}`);
+  }
+
+  const testSymbols = repoMap.symbols[slice.testRelPath];
+  if (testSymbols) {
+    const testNames = listExistingTestNames(testSymbols);
+    if (testNames) {
+      parts.push(`Existing tests in ${slice.testRelPath} (do not duplicate their names): ${testNames}`);
+    }
+  }
+
+  const implEntry = repoMap.symbols[slice.implRelPath];
+  if (implEntry) {
+    if (targetExistsInImpl(implEntry, slice.functionName)) {
+      parts.push(
+        `The target function ${slice.functionName} already exists in ${slice.implRelPath} — your test drives a behavior change to it.`,
+      );
+    } else {
+      parts.push(
+        `The target function ${slice.functionName} does NOT exist yet in ${slice.implRelPath} — remember the import-inside-the-test-function rule above.`,
+      );
+    }
+  }
+
+  return parts.join("\n\n");
+}
+
+function buildGreenPrompt(slice: PlannedSlice, repoMap: RepoMap, lastFailureOutput: string | undefined): string {
+  const parts: string[] = [];
+  const implSymbols = renderSymbols(repoMap, [slice.implRelPath], SLICE_SYMBOLS_CAP);
+  if (implSymbols) {
+    parts.push(`Current symbols in the implementation module:\n${implSymbols}`);
+  }
+
   const base =
     `The test at ${slice.testRelPath} is currently failing. Make it pass with the minimal correct ` +
     `implementation in ${slice.implRelPath} for: ${slice.description}. Do NOT modify ${slice.testRelPath} ` +
     "under any circumstances -- it is locked and any attempt to edit it will be reverted and the slice will fail.";
-  if (lastFailureOutput === undefined) return base;
-  return `${base}\n\nThe previous attempt failed with:\n${lastFailureOutput}`;
+  parts.push(base);
+
+  if (lastFailureOutput !== undefined) {
+    parts.push(`The previous attempt failed with:\n${lastFailureOutput}`);
+  }
+
+  return parts.join("\n\n");
 }
 
 function buildRefactorPrompt(slice: PlannedSlice): string {
@@ -165,7 +217,7 @@ export async function runFeature(
     const startedAt = new Date().toISOString();
     await markProgress(artifactRoot, runId, startedAt, "map", workspace.branchName);
 
-    const repoMap: RepoMap = await mapRepo(workDir);
+    const repoMap: RepoMap = await mapRepo(workDir, spec.venvDir);
     await writeArtifact(artifactRoot, runId, "map", repoMap);
 
     await markProgress(artifactRoot, runId, startedAt, "baseline", workspace.branchName);
@@ -242,7 +294,7 @@ export async function runFeature(
       await backend.runPhase({
         cwd: workDir,
         model: spec.models.red,
-        prompt: buildRedPrompt(slice),
+        prompt: buildRedPrompt(slice, repoMap),
         lockedPaths: [slice.implRelPath], // RED must not implement — now structurally enforced
       });
       await commitAll(workDir, `red: ${runId} slice ${i}`);
@@ -279,7 +331,8 @@ export async function runFeature(
         greenModel: spec.models.green,
         escalationModel: spec.models.escalation,
         maxIterations: spec.maxRepairIterations,
-        buildPrompt: (lastFailure) => buildGreenPrompt(slice, lastFailure),
+        // Symbols reflect the module as mapped at run start; RED may have added test symbols since then.
+        buildPrompt: (lastFailure) => buildGreenPrompt(slice, repoMap, lastFailure),
       });
 
       if (!greenResult.passed) {

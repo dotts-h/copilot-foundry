@@ -9,6 +9,7 @@ const MAP: RepoMap = {
     "test_strings_kata.py": ["strings_kata"],
     "test_unrelated.py": ["unrelated"],
   },
+  symbols: {},
 };
 
 describe("computeScope", () => {
@@ -40,6 +41,7 @@ describe("computeScope", () => {
       files: ["pkg/a.py", "pkg/test_a.py", "other/b.py"],
       testFiles: ["pkg/test_a.py"],
       imports: {},
+      symbols: {},
     };
     const report = computeScope(nestedMap, "pkg/a.py", "package");
     expect(report.inScope.sort()).toEqual(["pkg/a.py", "pkg/test_a.py"]);
