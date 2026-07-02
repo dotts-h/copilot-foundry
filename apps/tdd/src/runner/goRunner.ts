@@ -1,8 +1,8 @@
 import { readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
+import type { RedLintResult } from "../gates/redLinter.js";
 import type { BaselineTestResult } from "../phases/baseline.js";
 import { runCommand } from "../exec.js";
-import type { FileSymbols } from "../phases/map.js";
 import { computeGoMutationScore } from "./goMutation.js";
 import { extractGoSymbols } from "./goSymbols.js";
 import type { RunClassification, StaticGateResult, TargetRunner, TestRunResult } from "./types.js";
@@ -10,7 +10,7 @@ import type { RunClassification, StaticGateResult, TargetRunner, TestRunResult }
 const SINGLE_ASSERTION_TRIANGULATION_WARNING =
   "only one assertion found -- a single example does not triangulate; consider a second, differently-valued case";
 
-export function lintRedTestGo(testSource: string): import("../gates/redLinter.js").RedLintResult {
+export function lintRedTestGo(testSource: string): RedLintResult {
   const blocking: string[] = [];
   const warnings: string[] = [];
 
@@ -161,9 +161,7 @@ export function isMissingSymbolError(raw: string, functionName: string): boolean
   return GENERIC_MISSING_SYMBOL_PATTERNS.some((pattern) => pattern.test(raw));
 }
 
-function goTestEnv(): Record<string, string> {
-  return { GOFLAGS: "-count=1" };
-}
+const GO_TEST_ENV: Record<string, string> = { GOFLAGS: "-count=1" };
 
 async function readModulePathFromWorkDir(workDir: string): Promise<string> {
   try {
@@ -175,33 +173,29 @@ async function readModulePathFromWorkDir(workDir: string): Promise<string> {
 }
 
 export function createGoRunner(_targetDir: string): TargetRunner {
-  async function runTests(workDir: string, targetRelPath?: string): Promise<TestRunResult> {
-    const pkg = targetRelPath !== undefined ? packageOf(targetRelPath) : "./...";
-    const result = await goRunnerDeps.runCommand("go", ["test", pkg], {
+  async function runGoTestPkgs(workDir: string, pkgs: string[]): Promise<TestRunResult> {
+    const result = await goRunnerDeps.runCommand("go", ["test", ...pkgs], {
       cwd: workDir,
-      env: goTestEnv(),
+      env: GO_TEST_ENV,
       timeoutMs: 180_000,
     });
     return { exitCode: result.exitCode, raw: result.stdout + result.stderr };
   }
 
+  async function runTests(workDir: string, targetRelPath?: string): Promise<TestRunResult> {
+    const pkg = targetRelPath !== undefined ? packageOf(targetRelPath) : "./...";
+    return runGoTestPkgs(workDir, [pkg]);
+  }
+
   async function runTestsOnPaths(workDir: string, paths: string[]): Promise<TestRunResult> {
-    const pkgs =
-      paths.length === 0
-        ? ["./..."]
-        : [...new Set(paths.map((p) => packageOf(p)))];
-    const result = await goRunnerDeps.runCommand("go", ["test", ...pkgs], {
-      cwd: workDir,
-      env: goTestEnv(),
-      timeoutMs: 180_000,
-    });
-    return { exitCode: result.exitCode, raw: result.stdout + result.stderr };
+    const pkgs = paths.length === 0 ? ["./..."] : [...new Set(paths.map(packageOf))];
+    return runGoTestPkgs(workDir, pkgs);
   }
 
   async function runTestsVerbose(workDir: string): Promise<{ exitCode: number; tests: BaselineTestResult[] }> {
     const result = await goRunnerDeps.runCommand("go", ["test", "./...", "-v"], {
       cwd: workDir,
-      env: goTestEnv(),
+      env: GO_TEST_ENV,
       timeoutMs: 180_000,
     });
     const modulePath = await readModulePathFromWorkDir(workDir);
@@ -219,10 +213,6 @@ export function createGoRunner(_targetDir: string): TargetRunner {
 
   function isTestFile(relPath: string): boolean {
     return relPath.endsWith("_test.go");
-  }
-
-  async function extractSymbols(targetDir: string, files: string[]): Promise<Record<string, FileSymbols>> {
-    return extractGoSymbols(targetDir, files);
   }
 
   async function runStaticGates(workDir: string): Promise<StaticGateResult[]> {
@@ -254,13 +244,11 @@ export function createGoRunner(_targetDir: string): TargetRunner {
     classifyRun: classifyGoRun,
     isMissingSymbolError,
 
-    testPathKey(relPath: string): string {
-      return testPathKeyFromRelPath(relPath);
-    },
+    testPathKey: testPathKeyFromRelPath,
 
     isSourceFile,
     isTestFile,
-    extractSymbols,
+    extractSymbols: extractGoSymbols,
 
     computeMutationScore(opts) {
       return computeGoMutationScore(() => runTests(opts.workDir, opts.testRelPath), opts, classifyGoRun);
