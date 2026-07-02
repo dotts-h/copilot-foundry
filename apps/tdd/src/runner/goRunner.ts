@@ -153,7 +153,10 @@ const GENERIC_MISSING_SYMBOL_PATTERNS = [
   // signature (different arg/return count) fails to compile with one of these
   // shapes rather than a bare `undefined: <symbol>`. These are also legitimate
   // first-RED evidence for a not-yet-implemented (or changed) signature.
-  /assignment mismatch: \d+ variables? but \d+ values?/,
+  // Two compiler shapes: "3 variables but 2 values" (literal RHS) and
+  // "3 variables but f(x) returns 2 values" (call RHS — the shape a changed
+  // return arity actually produces).
+  /assignment mismatch: \d+ variables? but (?:.+ returns )?\d+ values?/,
   /not enough arguments in call to \S+/,
   /too many arguments in call to \S+/,
   /not enough return values/,

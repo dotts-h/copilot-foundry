@@ -200,6 +200,16 @@ describe("isMissingSymbolError accepts Go signature-change compiler diagnostics"
       ),
     ).toBe(true);
 
+    // (4b) verbatim twiceshy run-6e871752 failure line: the call-RHS shape
+    // ("but <expr> returns N values") a changed return arity actually produces,
+    // with a functionName unrelated to the diagnostic.
+    expect(
+      isMissingSymbolErrorDynamic(
+        "internal/index/idf_gate_internal_test.go:131:24: assignment mismatch: 3 variables but ix.discriminativeTokensVia returns 2 values",
+        "discriminativeTokensVia",
+      ),
+    ).toBe(true);
+
     // (5) not enough return values.
     expect(
       isMissingSymbolErrorDynamic(
