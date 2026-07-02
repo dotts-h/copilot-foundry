@@ -39,8 +39,10 @@ export const GO_RED_PROMPT_RULES =
   "yourself, and do not use reflection tricks to avoid the compile error.";
 
 export const GO_MISSING_SYMBOL_RED_NOTE =
-  "does NOT exist yet — your test will fail to compile with " +
-  "`undefined: <symbol>`; that compile failure is the expected RED, do not stub the symbol.";
+  "does NOT exist yet — your test will fail to compile with `undefined: <symbol>` " +
+  "(or a related compiler diagnostic, e.g. `<expr> undefined (type T has no field or " +
+  "method <symbol>)` or `unknown field <symbol> in struct literal`); that compile " +
+  "failure is the expected RED, do not stub the symbol.";
 
 const EXCLUDED_PATH_SEGMENTS = ["vendor", "testdata"];
 
@@ -126,6 +128,28 @@ export function classifyGoRun(result: TestRunResult): RunClassification {
   return "harness_error";
 }
 
+// Generic (not functionName-pinned) Go compiler missing-symbol diagnostic shapes. These
+// are checked only after the functionName-pinned fast path above misses, so that a
+// legitimate first RED referencing a brand-new struct field/method on an *existing* type
+// (e.g. `dt.Control undefined (type draftedTaskJSON has no field or method Control)`) is
+// still classified as missing_symbol rather than collection_error.
+//
+// Tradeoff accepted: once we fall back to these broad, ANY-identifier patterns, a typo'd
+// identifier in the RED test (e.g. referencing "Contrl" instead of "Control") would also
+// be classified as missing_symbol instead of collection_error. That's acceptable because
+// the orchestrator's branch review is the backstop that catches a RED test asserting
+// against the wrong symbol.
+// Deliberately does NOT include a bare `undefined: X` pattern here: that shape is already
+// covered by the functionName-pinned fast path above, and a functionName-agnostic version
+// of it would also match an unrelated symbol (e.g. `undefined: Bar` while the RED test was
+// meant to reference `Foo`), which is a real mismatch we still want surfaced as
+// collection_error rather than papered over as missing_symbol.
+const GENERIC_MISSING_SYMBOL_PATTERNS = [
+  /\S+ undefined \(type \S+ has no field or method \S+\)/,
+  /unknown field \S+ in struct literal/,
+  /\S+ not declared by package/,
+];
+
 export function isMissingSymbolError(raw: string, functionName: string): boolean {
   const name = escapeRegExp(functionName);
   const patterns = [
@@ -133,7 +157,8 @@ export function isMissingSymbolError(raw: string, functionName: string): boolean
     new RegExp(`${name} not declared by package`),
     new RegExp(`has no field or method ${name}`),
   ];
-  return patterns.some((pattern) => pattern.test(raw));
+  if (patterns.some((pattern) => pattern.test(raw))) return true;
+  return GENERIC_MISSING_SYMBOL_PATTERNS.some((pattern) => pattern.test(raw));
 }
 
 function goTestEnv(): Record<string, string> {
