@@ -40,3 +40,29 @@ export function lintRedTest(testSource: string): RedLintResult {
 
   return { blocking, warnings };
 }
+
+function countGoAssertions(source: string): number {
+  const matches = source.match(/\bt\.(Error|Errorf|Fatal|Fatalf)\s*\(/g);
+  return matches ? matches.length : 0;
+}
+
+export function lintGoRedTest(testSource: string): RedLintResult {
+  const blocking: string[] = [];
+  const warnings: string[] = [];
+
+  if (testSource.trim().length === 0) {
+    blocking.push("test file is empty");
+    return { blocking, warnings };
+  }
+
+  const assertionCount = countGoAssertions(testSource);
+  if (assertionCount === 0) {
+    blocking.push("no t.Error/t.Fatal assertions found");
+  } else if (assertionCount === 1) {
+    warnings.push(
+      "only one assertion found -- a single example does not triangulate; consider a second, differently-valued case",
+    );
+  }
+
+  return { blocking, warnings };
+}

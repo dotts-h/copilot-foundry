@@ -163,7 +163,7 @@ export async function runFeature(
     await writeArtifact(artifactRoot, runId, "baseline", baseline);
 
     await markProgress(artifactRoot, runId, startedAt, "scope", workspace.branchName);
-    const scopeReport = computeScope(repoMap, spec.targetHint, spec.scope, spec.language);
+    const scopeReport = computeScope(repoMap, spec.targetHint, spec.scope, spec.language, repoMap.modulePath);
     await writeArtifact(artifactRoot, runId, "scope", scopeReport);
 
     await markProgress(artifactRoot, runId, startedAt, "plan", workspace.branchName);

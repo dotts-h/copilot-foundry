@@ -45,3 +45,41 @@ describe("computeScope", () => {
     expect(report.inScope.sort()).toEqual(["pkg/a.py", "pkg/test_a.py"]);
   });
 });
+
+const GO_MAP: RepoMap = {
+  files: ["add_kata.go", "add_kata_test.go", "unrelated.go", "unrelated_test.go"],
+  testFiles: ["add_kata_test.go", "unrelated_test.go"],
+  imports: {
+    "add_kata_test.go": ["go-add-kata"],
+    "unrelated_test.go": ["go-add-kata/other"],
+  },
+  modulePath: "go-add-kata",
+};
+
+describe("computeScope (go)", () => {
+  it("scope=node includes the target plus its reverse-dependents matched by exact import equality", () => {
+    const report = computeScope(GO_MAP, "add_kata.go", "node", "go", "go-add-kata");
+    expect(report.inScope.sort()).toEqual(["add_kata.go", "add_kata_test.go"]);
+    expect(report.inScope).not.toContain("unrelated_test.go");
+  });
+
+  it("scope=repo always returns every file regardless of targetHint", () => {
+    const report = computeScope(GO_MAP, "add_kata.go", "repo", "go", "go-add-kata");
+    expect(report.inScope.sort()).toEqual([...GO_MAP.files].sort());
+  });
+
+  it("scope=package groups by containing directory", () => {
+    const nestedMap: RepoMap = {
+      files: ["pkg/a.go", "pkg/a_test.go", "other/b.go"],
+      testFiles: ["pkg/a_test.go"],
+      imports: {},
+      modulePath: "example.com/m",
+    };
+    const report = computeScope(nestedMap, "pkg/a.go", "package", "go", "example.com/m");
+    expect(report.inScope.sort()).toEqual(["pkg/a.go", "pkg/a_test.go"]);
+  });
+
+  it("throws a clear error when modulePath is missing for a non-package, non-repo scope", () => {
+    expect(() => computeScope(GO_MAP, "add_kata.go", "node", "go")).toThrow(/modulePath/);
+  });
+});

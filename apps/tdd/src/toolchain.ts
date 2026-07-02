@@ -1,9 +1,10 @@
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { runCommand } from "./exec.js";
 import { runPytest } from "./pythonRunner.js";
 import { runPytestVerbose, type BaselineTestResult } from "./phases/baseline.js";
 import { isMissingSymbolCollectionError } from "./gates/redGate.js";
-import { lintRedTest, type RedLintResult } from "./gates/redLinter.js";
+import { lintRedTest, lintGoRedTest, type RedLintResult } from "./gates/redLinter.js";
+import { goModulePath, goPathUnit, isGoMissingSymbolError, runGoTest, runGoTestVerbose } from "./goRunner.js";
 import type { PlannedSlice } from "./phases/plan.js";
 import type { Language } from "./types.js";
 
@@ -40,6 +41,17 @@ function buildPythonRedPrompt(slice: PlannedSlice): string {
     "to a module-top import -- import it inside the new test function(s) instead, so the rest of the test " +
     "module still collects and runs. Never modify or remove existing imports. " +
     "Do NOT implement or modify the implementation file. Do not create or modify any other file."
+  );
+}
+
+function buildGoRedPrompt(slice: PlannedSlice): string {
+  return (
+    `Write ONLY a failing Go test at ${slice.testRelPath} using the standard \`testing\` package, in the SAME ` +
+    `package as ${slice.implRelPath}, for this behavior: ${slice.description}. Include at least two assertions ` +
+    "(t.Errorf/t.Fatalf) with different, non-trivially-related expected values so the test triangulates and " +
+    "cannot be satisfied by a constant. If the function or symbol under test does not exist yet, reference it " +
+    "anyway -- the resulting compile error IS the expected first RED; do NOT create or modify the implementation " +
+    "file. Do not create or modify any other file."
   );
 }
 
@@ -80,17 +92,61 @@ function pythonToolchain(venvDir: string): TestToolchain {
   };
 }
 
+async function runGoOnPaths(cwd: string, paths: string[]): Promise<{ passed: boolean; raw: string }> {
+  if (paths.length === 0) {
+    const { verdict, raw } = await runGoTest(cwd);
+    return { passed: verdict === "passed", raw };
+  }
+
+  const seenDirs = new Set<string>();
+  let passed = true;
+  let raw = "";
+  for (const path of paths) {
+    const dir = dirname(path);
+    if (seenDirs.has(dir)) continue;
+    seenDirs.add(dir);
+    const result = await runGoTest(cwd, path);
+    raw += result.raw;
+    if (result.verdict !== "passed") passed = false;
+  }
+  return { passed, raw };
+}
+
+function goToolchain(modulePath: string): TestToolchain {
+  return {
+    language: "go",
+    async runScoped(cwd, targetRelPath) {
+      return runGoTest(cwd, targetRelPath);
+    },
+    async runOnPaths(cwd, paths) {
+      return runGoOnPaths(cwd, paths);
+    },
+    async runVerbose(cwd) {
+      return runGoTestVerbose(cwd);
+    },
+    pathUnit(relPath) {
+      return goPathUnit(modulePath, relPath);
+    },
+    isMissingSymbolError: isGoMissingSymbolError,
+    lintRedTest: lintGoRedTest,
+    supportsMutationGate: false,
+    supportsRefactor: false,
+    buildRedPrompt: buildGoRedPrompt,
+    planNouns: { repo: "Go", identifier: "Go function (a valid Go identifier, exported or unexported)" },
+  };
+}
+
 export async function createToolchain(
   language: Language,
   venvDir: string | undefined,
   workDir: string,
 ): Promise<TestToolchain> {
-  void workDir; // unused until the go branch lands in task 4
   if (language === "python") {
     if (venvDir === undefined) {
       throw new Error('createToolchain: language "python" requires venvDir');
     }
     return pythonToolchain(venvDir);
   }
-  throw new Error("createToolchain: not implemented until task 4");
+  const modulePath = await goModulePath(workDir);
+  return goToolchain(modulePath);
 }

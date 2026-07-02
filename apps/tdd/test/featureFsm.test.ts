@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -8,10 +8,22 @@ import { DEFAULT_MODELS_BY_BACKEND, type FeatureRunSpec } from "../src/types.js"
 import { ScriptedBackend, writeImpl } from "./helpers/fakeBackend.js";
 
 const FIXTURE_VENV = join(process.cwd(), "fixtures", "add-kata", ".venv");
+const GO_FIXTURE = join(process.cwd(), "fixtures", "go-add-kata");
 
 async function seedTargetRepo(): Promise<string> {
   const dir = mkdtempSync(join(tmpdir(), "feature-fsm-"));
   writeFileSync(join(dir, "add_kata.py"), "def add(a, b):\n    raise NotImplementedError\n");
+  await runCommand("git", ["init", "-q"], { cwd: dir });
+  await runCommand("git", ["config", "user.email", "test@example.com"], { cwd: dir });
+  await runCommand("git", ["config", "user.name", "Test"], { cwd: dir });
+  await runCommand("git", ["add", "-A"], { cwd: dir });
+  await runCommand("git", ["commit", "-q", "-m", "seed"], { cwd: dir });
+  return dir;
+}
+
+async function seedGoTargetRepo(): Promise<string> {
+  const dir = mkdtempSync(join(tmpdir(), "feature-fsm-go-"));
+  cpSync(GO_FIXTURE, dir, { recursive: true });
   await runCommand("git", ["init", "-q"], { cwd: dir });
   await runCommand("git", ["config", "user.email", "test@example.com"], { cwd: dir });
   await runCommand("git", ["config", "user.name", "Test"], { cwd: dir });
@@ -29,6 +41,21 @@ function baseSpec(overrides: Partial<FeatureRunSpec> = {}): FeatureRunSpec {
     scope: "repo",
     hitl: "auto",
     featureDescription: "implement add",
+    models: DEFAULT_MODELS_BY_BACKEND.claude,
+    maxRepairIterations: 3,
+    commit: false,
+    ...overrides,
+  };
+}
+
+function goBaseSpec(overrides: Partial<FeatureRunSpec> = {}): FeatureRunSpec {
+  return {
+    mode: "feature",
+    targetDir: "",
+    language: "go",
+    scope: "repo",
+    hitl: "auto",
+    featureDescription: "implement Add",
     models: DEFAULT_MODELS_BY_BACKEND.claude,
     maxRepairIterations: 3,
     commit: false,
@@ -391,5 +418,92 @@ describe("runFeature", () => {
     expect(
       ledger.sliceResults[0].mutationScore?.results.find((r) => r.operator === "constant")?.survived,
     ).toBe(true);
+  });
+
+  it("[go] runs map->baseline->scope->plan->RED->GREEN->verify->accept->writeback for a single planned slice end to end, with no refactor call and no mutation gate", async () => {
+    targetDir = await seedGoTargetRepo();
+    artifactRoot = mkdtempSync(join(tmpdir(), "feature-fsm-go-artifacts-"));
+
+    const backend = new ScriptedBackend([
+      () => ({
+        resultText: JSON.stringify([
+          {
+            description: "Add(a, b int) int returns a + b",
+            implRelPath: "add_kata.go",
+            testRelPath: "add_kata_test.go",
+            functionName: "Add",
+          },
+        ]),
+      }),
+      async (opts) => {
+        writeFileSync(
+          join(opts.cwd, "add_kata_test.go"),
+          'package addkata\n\nimport "testing"\n\nfunc TestAdd(t *testing.T) {\n\tif got := Add(2, 3); got != 5 {\n\t\tt.Fatalf("got %d", got)\n\t}\n\tif got := Add(0, 0); got != 0 {\n\t\tt.Fatalf("got %d", got)\n\t}\n}\n',
+        );
+      },
+      async (opts) =>
+        writeImpl(opts.cwd, "add_kata.go", "package addkata\n\nfunc Add(a, b int) int { return a + b }\n"),
+    ]);
+
+    const ledger = await runFeature(goBaseSpec({ targetDir }), backend, artifactRoot, "run-feature-go-1");
+
+    expect(ledger.status).toBe("accepted");
+    expect(ledger.slices).toHaveLength(1);
+    expect(ledger.sliceResults).toHaveLength(1);
+    expect(ledger.sliceResults[0].redGatePassed).toBe(true);
+    expect(ledger.sliceResults[0].greenGatePassed).toBe(true);
+    expect(ledger.sliceResults[0].refactorApplied).toBe(false);
+    expect(ledger.sliceResults[0].mutationScore?.attemptedCount).toBe(0);
+    expect(ledger.mapSummary.fileCount).toBeGreaterThan(0);
+    expect(ledger.verifyResult?.passed).toBe(true);
+    expect(ledger.acceptanceLedger?.overallAccepted).toBe(true);
+    expect(ledger.writebackResult?.committed).toBe(false);
+
+    // no REFACTOR runPhase call for Go (supportsRefactor: false) -- plan + RED + GREEN only
+    expect(backend.calls).toHaveLength(3);
+    expect(backend.calls[0].lockedPaths).toBeUndefined(); // plan
+    expect(backend.calls[1].lockedPaths).toEqual(["add_kata.go"]); // RED locks impl
+    expect(backend.calls[2].lockedPaths).toEqual(["add_kata_test.go"]); // GREEN locks test
+
+    expect(ledger.workspace.branchName).toBe("helm-tdd/run-feature-go-1");
+    const show = await runCommand("git", ["show", "helm-tdd/run-feature-go-1:add_kata.go"], { cwd: targetDir });
+    expect(show.stdout).toContain("return a + b");
+    const untouched = readFileSync(join(targetDir, "add_kata.go"), "utf8");
+    expect(untouched).toContain("panic"); // user's checkout never mutated
+    const list = await runCommand("git", ["worktree", "list", "--porcelain"], { cwd: targetDir });
+    expect(list.stdout.match(/^worktree /gm)?.length).toBe(1); // worktree cleaned up
+  });
+
+  it("[go] stops the run and reports red_gate_failed when the RED phase produces an already-green test", async () => {
+    targetDir = await seedGoTargetRepo();
+    artifactRoot = mkdtempSync(join(tmpdir(), "feature-fsm-go-artifacts-"));
+    writeFileSync(join(targetDir, "add_kata.go"), "package addkata\n\nfunc Add(a, b int) int { return a + b }\n");
+    await runCommand("git", ["add", "-A"], { cwd: targetDir });
+    await runCommand("git", ["commit", "-q", "-m", "already correct"], { cwd: targetDir });
+
+    const backend = new ScriptedBackend([
+      () => ({
+        resultText: JSON.stringify([
+          {
+            description: "Add(a, b int) int returns a + b",
+            implRelPath: "add_kata.go",
+            testRelPath: "add_kata_test.go",
+            functionName: "Add",
+          },
+        ]),
+      }),
+      async (opts) => {
+        writeFileSync(
+          join(opts.cwd, "add_kata_test.go"),
+          'package addkata\n\nimport "testing"\n\nfunc TestAdd(t *testing.T) {\n\tif got := Add(2, 3); got != 5 {\n\t\tt.Fatalf("got %d", got)\n\t}\n}\n',
+        );
+      },
+    ]);
+
+    const ledger = await runFeature(goBaseSpec({ targetDir }), backend, artifactRoot, "run-go-already-green");
+
+    expect(ledger.status).toBe("red_gate_failed");
+    expect(ledger.sliceResults[0].redOutcome).toBe("already_green");
+    expect(backend.calls).toHaveLength(2);
   });
 });

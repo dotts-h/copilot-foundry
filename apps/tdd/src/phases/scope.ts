@@ -1,3 +1,4 @@
+import { goPathUnit } from "../goRunner.js";
 import type { Language, WorkflowScope } from "../types.js";
 import type { RepoMap } from "./map.js";
 
@@ -16,6 +17,18 @@ function reverseDependents(map: RepoMap, targetRelPath: string): string[] {
   for (const [file, imports] of Object.entries(map.imports)) {
     if (file === targetRelPath) continue;
     if (imports.some((imp) => imp === targetModule || imp.startsWith(`${targetModule}.`))) {
+      dependents.push(file);
+    }
+  }
+  return dependents;
+}
+
+function reverseDependentsGo(map: RepoMap, targetRelPath: string, modulePath: string): string[] {
+  const targetModule = goPathUnit(modulePath, targetRelPath);
+  const dependents: string[] = [];
+  for (const [file, imports] of Object.entries(map.imports)) {
+    if (file === targetRelPath) continue;
+    if (imports.includes(targetModule)) {
       dependents.push(file);
     }
   }
@@ -51,6 +64,17 @@ export function computeScope(
     const dir = targetHint.includes("/") ? targetHint.slice(0, targetHint.lastIndexOf("/")) : "";
     const inPackage = map.files.filter((f) => (dir === "" ? !f.includes("/") : f.startsWith(`${dir}/`)));
     return { inScope: inPackage, reason: `scope=package, directory "${dir || "."}"` };
+  }
+
+  if (language === "go") {
+    if (modulePath === undefined) {
+      throw new Error("computeScope: modulePath is required for go scope resolution");
+    }
+    const goDependents = reverseDependentsGo(map, targetHint, modulePath);
+    return {
+      inScope: [targetHint, ...goDependents],
+      reason: `scope=${scopeLevel}, target + ${goDependents.length} reverse-dependent file(s)`,
+    };
   }
 
   const dependents = reverseDependents(map, targetHint);
