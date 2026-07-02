@@ -1,8 +1,8 @@
 import { readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
+import type { RedLintResult } from "../gates/redLinter.js";
 import type { BaselineTestResult } from "../phases/baseline.js";
 import { runCommand } from "../exec.js";
-import type { FileSymbols } from "../phases/map.js";
 import { computeGoMutationScore } from "./goMutation.js";
 import { extractGoSymbols } from "./goSymbols.js";
 import type { RunClassification, StaticGateResult, TargetRunner, TestRunResult } from "./types.js";
@@ -10,7 +10,7 @@ import type { RunClassification, StaticGateResult, TargetRunner, TestRunResult }
 const SINGLE_ASSERTION_TRIANGULATION_WARNING =
   "only one assertion found -- a single example does not triangulate; consider a second, differently-valued case";
 
-export function lintRedTestGo(testSource: string): import("../gates/redLinter.js").RedLintResult {
+export function lintRedTestGo(testSource: string): RedLintResult {
   const blocking: string[] = [];
   const warnings: string[] = [];
 
@@ -39,8 +39,10 @@ export const GO_RED_PROMPT_RULES =
   "yourself, and do not use reflection tricks to avoid the compile error.";
 
 export const GO_MISSING_SYMBOL_RED_NOTE =
-  "does NOT exist yet — your test will fail to compile with " +
-  "`undefined: <symbol>`; that compile failure is the expected RED, do not stub the symbol.";
+  "does NOT exist yet — your test will fail to compile with `undefined: <symbol>` " +
+  "(or a related compiler diagnostic, e.g. `<expr> undefined (type T has no field or " +
+  "method <symbol>)` or `unknown field <symbol> in struct literal`); that compile " +
+  "failure is the expected RED, do not stub the symbol.";
 
 const EXCLUDED_PATH_SEGMENTS = ["vendor", "testdata"];
 
@@ -126,6 +128,28 @@ export function classifyGoRun(result: TestRunResult): RunClassification {
   return "harness_error";
 }
 
+// Generic (not functionName-pinned) Go compiler missing-symbol diagnostic shapes. These
+// are checked only after the functionName-pinned fast path above misses, so that a
+// legitimate first RED referencing a brand-new struct field/method on an *existing* type
+// (e.g. `dt.Control undefined (type draftedTaskJSON has no field or method Control)`) is
+// still classified as missing_symbol rather than collection_error.
+//
+// Tradeoff accepted: once we fall back to these broad, ANY-identifier patterns, a typo'd
+// identifier in the RED test (e.g. referencing "Contrl" instead of "Control") would also
+// be classified as missing_symbol instead of collection_error. That's acceptable because
+// the orchestrator's branch review is the backstop that catches a RED test asserting
+// against the wrong symbol.
+// Deliberately does NOT include a bare `undefined: X` pattern here: that shape is already
+// covered by the functionName-pinned fast path above, and a functionName-agnostic version
+// of it would also match an unrelated symbol (e.g. `undefined: Bar` while the RED test was
+// meant to reference `Foo`), which is a real mismatch we still want surfaced as
+// collection_error rather than papered over as missing_symbol.
+const GENERIC_MISSING_SYMBOL_PATTERNS = [
+  /\S+ undefined \(type \S+ has no field or method \S+\)/,
+  /unknown field \S+ in struct literal/,
+  /\S+ not declared by package/,
+];
+
 export function isMissingSymbolError(raw: string, functionName: string): boolean {
   const name = escapeRegExp(functionName);
   const patterns = [
@@ -133,12 +157,11 @@ export function isMissingSymbolError(raw: string, functionName: string): boolean
     new RegExp(`${name} not declared by package`),
     new RegExp(`has no field or method ${name}`),
   ];
-  return patterns.some((pattern) => pattern.test(raw));
+  if (patterns.some((pattern) => pattern.test(raw))) return true;
+  return GENERIC_MISSING_SYMBOL_PATTERNS.some((pattern) => pattern.test(raw));
 }
 
-function goTestEnv(): Record<string, string> {
-  return { GOFLAGS: "-count=1" };
-}
+const GO_TEST_ENV: Record<string, string> = { GOFLAGS: "-count=1" };
 
 async function readModulePathFromWorkDir(workDir: string): Promise<string> {
   try {
@@ -150,33 +173,29 @@ async function readModulePathFromWorkDir(workDir: string): Promise<string> {
 }
 
 export function createGoRunner(_targetDir: string): TargetRunner {
-  async function runTests(workDir: string, targetRelPath?: string): Promise<TestRunResult> {
-    const pkg = targetRelPath !== undefined ? packageOf(targetRelPath) : "./...";
-    const result = await goRunnerDeps.runCommand("go", ["test", pkg], {
+  async function runGoTestPkgs(workDir: string, pkgs: string[]): Promise<TestRunResult> {
+    const result = await goRunnerDeps.runCommand("go", ["test", ...pkgs], {
       cwd: workDir,
-      env: goTestEnv(),
+      env: GO_TEST_ENV,
       timeoutMs: 180_000,
     });
     return { exitCode: result.exitCode, raw: result.stdout + result.stderr };
   }
 
+  async function runTests(workDir: string, targetRelPath?: string): Promise<TestRunResult> {
+    const pkg = targetRelPath !== undefined ? packageOf(targetRelPath) : "./...";
+    return runGoTestPkgs(workDir, [pkg]);
+  }
+
   async function runTestsOnPaths(workDir: string, paths: string[]): Promise<TestRunResult> {
-    const pkgs =
-      paths.length === 0
-        ? ["./..."]
-        : [...new Set(paths.map((p) => packageOf(p)))];
-    const result = await goRunnerDeps.runCommand("go", ["test", ...pkgs], {
-      cwd: workDir,
-      env: goTestEnv(),
-      timeoutMs: 180_000,
-    });
-    return { exitCode: result.exitCode, raw: result.stdout + result.stderr };
+    const pkgs = paths.length === 0 ? ["./..."] : [...new Set(paths.map(packageOf))];
+    return runGoTestPkgs(workDir, pkgs);
   }
 
   async function runTestsVerbose(workDir: string): Promise<{ exitCode: number; tests: BaselineTestResult[] }> {
     const result = await goRunnerDeps.runCommand("go", ["test", "./...", "-v"], {
       cwd: workDir,
-      env: goTestEnv(),
+      env: GO_TEST_ENV,
       timeoutMs: 180_000,
     });
     const modulePath = await readModulePathFromWorkDir(workDir);
@@ -194,10 +213,6 @@ export function createGoRunner(_targetDir: string): TargetRunner {
 
   function isTestFile(relPath: string): boolean {
     return relPath.endsWith("_test.go");
-  }
-
-  async function extractSymbols(targetDir: string, files: string[]): Promise<Record<string, FileSymbols>> {
-    return extractGoSymbols(targetDir, files);
   }
 
   async function runStaticGates(workDir: string): Promise<StaticGateResult[]> {
@@ -229,13 +244,11 @@ export function createGoRunner(_targetDir: string): TargetRunner {
     classifyRun: classifyGoRun,
     isMissingSymbolError,
 
-    testPathKey(relPath: string): string {
-      return testPathKeyFromRelPath(relPath);
-    },
+    testPathKey: testPathKeyFromRelPath,
 
     isSourceFile,
     isTestFile,
-    extractSymbols,
+    extractSymbols: extractGoSymbols,
 
     computeMutationScore(opts) {
       return computeGoMutationScore(() => runTests(opts.workDir, opts.testRelPath), opts, classifyGoRun);
