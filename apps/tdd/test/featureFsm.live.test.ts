@@ -14,6 +14,8 @@ const FIXTURE = join(process.cwd(), "fixtures", "strings-kata");
 async function seedTargetRepo(): Promise<string> {
   const dir = mkdtempSync(join(tmpdir(), "feature-fsm-live-"));
   cpSync(join(FIXTURE, "strings_kata.py"), join(dir, "strings_kata.py"));
+  // A python marker so runFeature's language auto-detect classifies the seeded repo.
+  cpSync(join(FIXTURE, "requirements.txt"), join(dir, "requirements.txt"));
   await runCommand("git", ["init", "-q"], { cwd: dir });
   await runCommand("git", ["config", "user.email", "test@example.com"], { cwd: dir });
   await runCommand("git", ["config", "user.name", "Test"], { cwd: dir });
