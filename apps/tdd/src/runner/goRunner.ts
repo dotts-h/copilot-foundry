@@ -162,16 +162,16 @@ const GENERIC_MISSING_SYMBOL_PATTERNS = [
 
 export function isMissingSymbolError(raw: string, functionName: string): boolean {
   const name = escapeRegExp(functionName);
-  const patterns = [
+  const functionPinnedPatterns = [
     new RegExp(`undefined: (\\w+\\.)?${name}\\b`),
     new RegExp(`${name} not declared by package`),
     new RegExp(`has no field or method ${name}`),
   ];
-  if (patterns.some((pattern) => pattern.test(raw))) return true;
-  return GENERIC_MISSING_SYMBOL_PATTERNS.some((pattern) => pattern.test(raw));
+  return [...functionPinnedPatterns, ...GENERIC_MISSING_SYMBOL_PATTERNS].some((pattern) => pattern.test(raw));
 }
 
 const GO_TEST_ENV: Record<string, string> = { GOFLAGS: "-count=1" };
+const GO_TEST_TIMEOUT_MS = 180_000;
 
 async function readModulePathFromWorkDir(workDir: string): Promise<string> {
   try {
@@ -187,7 +187,7 @@ export function createGoRunner(_targetDir: string): TargetRunner {
     const result = await goRunnerDeps.runCommand("go", ["test", ...pkgs], {
       cwd: workDir,
       env: GO_TEST_ENV,
-      timeoutMs: 180_000,
+      timeoutMs: GO_TEST_TIMEOUT_MS,
     });
     return { exitCode: result.exitCode, raw: result.stdout + result.stderr };
   }
@@ -206,7 +206,7 @@ export function createGoRunner(_targetDir: string): TargetRunner {
     const result = await goRunnerDeps.runCommand("go", ["test", "./...", "-v"], {
       cwd: workDir,
       env: GO_TEST_ENV,
-      timeoutMs: 180_000,
+      timeoutMs: GO_TEST_TIMEOUT_MS,
     });
     const modulePath = await readModulePathFromWorkDir(workDir);
     return {
