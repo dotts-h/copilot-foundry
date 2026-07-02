@@ -67,6 +67,30 @@ describe("runVerifyLadder", () => {
     expect(result.levels.map((l) => l.level)).toEqual(["focused", "spec", "impacted-subgraph"]);
   });
 
+  it("neutralizes a target repo's ini addopts so its coverage floor cannot fail the ladder", async () => {
+    dir = mkdtempSync(join(tmpdir(), "verify-ladder-"));
+    writeFileSync(
+      join(dir, "pytest.ini"),
+      "[pytest]\naddopts = --cov=foo --cov-report=term-missing --cov-fail-under=70\n",
+    );
+    writeFileSync(join(dir, "test_a.py"), "def test_a():\n    assert True\n");
+
+    const repoMap: RepoMap = { files: ["test_a.py"], testFiles: ["test_a.py"], imports: {} };
+    const scopeReport: ScopeReport = { inScope: ["test_a.py"], reason: "test" };
+
+    const result = await runVerifyLadder({
+      venvDir: FIXTURE_VENV,
+      targetDir: dir,
+      touchedTestPaths: ["test_a.py"],
+      newTestPaths: ["test_a.py"],
+      repoMap,
+      scopeReport,
+    });
+
+    expect(result.passed).toBe(true);
+    expect(result.levels.every((l) => l.passed)).toBe(true);
+  });
+
   it("falls back to touchedTestPaths for impacted-subgraph when no in-scope test files are tracked", async () => {
     dir = mkdtempSync(join(tmpdir(), "verify-ladder-"));
     writeFileSync(join(dir, "test_a.py"), "def test_a():\n    assert True\n");

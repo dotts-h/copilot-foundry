@@ -32,7 +32,7 @@ async function runPytestOnPaths(
   paths: string[],
 ): Promise<{ exitCode: number; raw: string }> {
   const pytestBin = join(venvDir, "bin", "pytest");
-  const args = ["-q", ...(paths.length > 0 ? paths : ["."])];
+  const args = ["-q", "-o", "addopts=", ...(paths.length > 0 ? paths : ["."])];
   const result = await runCommand(pytestBin, args, {
     cwd,
     env: { PYTHONDONTWRITEBYTECODE: "1" },
