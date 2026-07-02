@@ -19,6 +19,7 @@ import { createRunWorkspace, removeRunWorkspace, scopeRelPathFromGitRoot } from 
 import { writeRunState } from "./runStore.js";
 import { resolveRunner } from "./runner/resolve.js";
 import type { TargetRunner } from "./runner/types.js";
+import { soundPaths } from "./soundPaths.js";
 import { validateFeatureRunSpec, type FeatureRunSpec } from "./types.js";
 
 export interface SliceExecutionResult {
@@ -289,9 +290,7 @@ export async function runFeature(
     }
 
     const sliceResults: SliceExecutionResult[] = [];
-    let knownGoodPaths = new Set(
-      baseline.tests.filter((t) => t.outcome === "passed").map((t) => t.nodeId.split("::")[0]),
-    );
+    let knownGoodPaths = soundPaths(baseline.tests);
     let anyRegressionDetected = false;
 
     for (let i = 0; i < slices.length; i++) {
@@ -426,13 +425,10 @@ export async function runFeature(
           .filter((t) => t.outcome === "failed" || t.outcome === "error")
           .map((t) => t.nodeId.split("::")[0]),
       );
-      const postSlicePassingPaths = new Set(
-        postSliceScan.tests.filter((t) => t.outcome === "passed").map((t) => t.nodeId.split("::")[0]),
-      );
       if ([...knownGoodPaths].some((p) => postSliceFailingPaths.has(p))) {
         anyRegressionDetected = true;
       }
-      knownGoodPaths = new Set([...knownGoodPaths, ...postSlicePassingPaths]);
+      knownGoodPaths = new Set([...knownGoodPaths, ...soundPaths(postSliceScan.tests)]);
     }
 
     if (anyRegressionDetected) {
@@ -447,6 +443,7 @@ export async function runFeature(
       newTestPaths: touchedTestPaths,
       repoMap,
       scopeReport,
+      baseline,
     });
     await writeArtifact(artifactRoot, runId, "verify", verifyResult);
 

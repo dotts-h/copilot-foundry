@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { isMissingSymbolError } from "../runner/pythonRunner.js";
 import type { TargetRunner } from "../runner/types.js";
 import type { BaselineReport } from "../phases/baseline.js";
+import { soundPaths } from "../soundPaths.js";
 import type { RedLintResult } from "./redLinter.js";
 
 export type RedOutcome =
@@ -77,9 +78,7 @@ export async function classifyRedOutcome(opts: {
       .filter((t) => t.outcome === "failed" || t.outcome === "error")
       .map((t) => t.nodeId.split("::")[0]),
   );
-  const baselinePassingPaths = new Set(
-    opts.baseline.tests.filter((t) => t.outcome === "passed").map((t) => t.nodeId.split("::")[0]),
-  );
+  const baselinePassingPaths = soundPaths(opts.baseline.tests);
   const preexistingRegressionPaths = [...currentlyFailingPaths].filter(
     (path) => path !== testPathKey && baselinePassingPaths.has(path),
   );

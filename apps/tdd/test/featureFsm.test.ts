@@ -367,6 +367,49 @@ describe("runFeature", () => {
     expect(ledger.status).toBe("completed_with_regressions");
   });
 
+  it("does not report completed_with_regressions when a baseline mixed path still fails post-slice", async () => {
+    targetDir = await seedTargetRepo();
+    artifactRoot = mkdtempSync(join(tmpdir(), "feature-fsm-artifacts-"));
+
+    writeFileSync(
+      join(targetDir, "test_preexisting.py"),
+      "def test_ok():\n    assert True\n\n\ndef test_broken():\n    assert False\n",
+    );
+    await runCommand("git", ["add", "-A"], { cwd: targetDir });
+    await runCommand("git", ["commit", "-q", "-m", "seed mixed baseline"], { cwd: targetDir });
+
+    const backend = new ScriptedBackend([
+      () => ({
+        resultText: JSON.stringify([
+          {
+            description: "add(a, b) returns a + b",
+            implRelPath: "add_kata.py",
+            testRelPath: "test_add_kata.py",
+            functionName: "add",
+          },
+        ]),
+      }),
+      async (opts) => {
+        writeFileSync(
+          join(opts.cwd, "test_add_kata.py"),
+          "from add_kata import add\n\ndef test_add():\n    assert add(2, 3) == 5\n    assert add(0, 0) == 0\n",
+        );
+      },
+      async (opts) => writeImpl(opts.cwd, "add_kata.py", "def add(a, b):\n    return a + b\n"),
+    ]);
+
+    const ledger = await runFeature(
+      baseSpec({ targetDir, scope: "node", targetHint: "add_kata.py" }),
+      backend,
+      artifactRoot,
+      "run-mixed-baseline",
+    );
+
+    expect(ledger.sliceResults).toHaveLength(1);
+    expect(ledger.sliceResults[0].greenGatePassed).toBe(true);
+    expect(ledger.status).toBe("accepted");
+  });
+
   it("reports mutation_gate_failed when the constant mutant survives a weak, single-example test", async () => {
     targetDir = await seedTargetRepo();
     artifactRoot = mkdtempSync(join(tmpdir(), "feature-fsm-artifacts-"));

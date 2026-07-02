@@ -104,6 +104,27 @@ describe("classifyRedOutcome", () => {
     expect(result.preexistingRegressionPaths).toContain("test_other.py");
   });
 
+  it("does not flag a mixed baseline path that is still failing as a preexisting regression", async () => {
+    dir = mkdtempSync(join(tmpdir(), "red-gate-"));
+    writeFileSync(
+      join(dir, "test_mixed.py"),
+      "def test_ok():\n    assert True\n\n\ndef test_broken():\n    assert False\n",
+    );
+    const baseline = await runBaseline(runner, dir);
+    writeFileSync(join(dir, "test_new.py"), "def test_new():\n    assert 1 + 1 == 3\n");
+
+    const result = await classifyRedOutcome({
+      targetDir: dir,
+      runner,
+      testRelPath: "test_new.py",
+      functionName: "irrelevant",
+      baseline,
+    });
+
+    expect(result.outcome).toBe("failed_as_expected");
+    expect(result.preexistingRegressionPaths).not.toContain("test_mixed.py");
+  });
+
   it("classifies a module-top import of a not-yet-existing symbol as failed_as_expected -- the canonical first RED for a new function", async () => {
     dir = mkdtempSync(join(tmpdir(), "red-gate-"));
     const baseline = await runBaseline(runner, dir);
