@@ -12,7 +12,7 @@ export async function runPytest(
   targetRelPath?: string,
 ): Promise<PytestResult> {
   const pytestBin = join(venvDir, "bin", "pytest");
-  const result = await runCommand(pytestBin, ["-q", targetRelPath ?? "."], {
+  const result = await runCommand(pytestBin, ["-q", "-o", "addopts=", targetRelPath ?? "."], {
     cwd,
     env: { PYTHONDONTWRITEBYTECODE: "1" },
     timeoutMs: 60_000,

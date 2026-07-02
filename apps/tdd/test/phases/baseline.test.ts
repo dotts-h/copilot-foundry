@@ -35,6 +35,19 @@ describe("runBaseline", () => {
     const report = await runBaseline(FIXTURE_VENV, dir);
     expect(report.tests).toEqual([]);
   });
+
+  it("neutralizes a target repo's ini addopts so its coverage floor cannot poison the baseline", async () => {
+    writeFileSync(
+      join(dir, "pytest.ini"),
+      "[pytest]\naddopts = --cov=foo --cov-report=term-missing --cov-fail-under=70\n",
+    );
+    writeFileSync(join(dir, "test_mixed.py"), "def test_pass():\n    assert True\n");
+
+    const report = await runBaseline(FIXTURE_VENV, dir);
+
+    const byName = Object.fromEntries(report.tests.map((t) => [t.nodeId.split("::").pop(), t.outcome]));
+    expect(byName.test_pass).toBe("passed");
+  });
 });
 
 describe("parsePytestVerboseOutput", () => {
