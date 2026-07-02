@@ -4,6 +4,7 @@ export interface RunCommandOptions {
   cwd?: string;
   timeoutMs?: number;
   env?: Record<string, string>;
+  stdin?: string;
 }
 
 export interface RunCommandResult {
@@ -50,6 +51,11 @@ export function runCommand(
         stderr,
       });
     });
+
+    if (opts?.stdin !== undefined) {
+      child.stdin?.write(opts.stdin);
+      child.stdin?.end();
+    }
 
     if (opts?.timeoutMs !== undefined) {
       timeoutId = setTimeout(() => {
