@@ -1,6 +1,7 @@
 import type { BaselineTestResult } from "../phases/baseline.js";
 import type { FileSymbols } from "../phases/map.js";
 import type { MutationScoreResult } from "../gates/mutationGate.js";
+import type { RedLintResult } from "../gates/redLinter.js";
 
 export type TargetLanguage = "python" | "js" | "go";
 export type RunClassification = "passed" | "failed" | "harness_error";
@@ -56,4 +57,6 @@ export interface TargetRunner {
 
   /** Deterministic non-test gates run at the end of verify (e.g. tsc --noEmit, go vet). Empty for python. */
   runStaticGates(workDir: string): Promise<StaticGateResult[]>;
+
+  lintRedTest(testSource: string): RedLintResult;
 }

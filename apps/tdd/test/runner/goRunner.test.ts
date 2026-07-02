@@ -222,6 +222,29 @@ describe("createGoRunner predicates", () => {
   });
 });
 
+describe("createGoRunner lintRedTest", () => {
+  const runner = createGoRunner("/tmp");
+
+  it("does not warn on a table-driven test with range and a single t.Errorf", () => {
+    const result = runner.lintRedTest(
+      "func TestAdd(t *testing.T) {\n" +
+        "  for _, tc := range []struct{ a, b, want int }{{1, 2, 3}} {\n" +
+        "    if got := Add(tc.a, tc.b); got != tc.want {\n" +
+        "      t.Errorf(\"got %d want %d\", got, tc.want)\n" +
+        "    }\n" +
+        "  }\n" +
+        "}\n",
+    );
+    expect(result.blocking).toEqual([]);
+    expect(result.warnings.some((w) => /triangulat/.test(w))).toBe(false);
+  });
+
+  it("blocks a test file with no t.* or testify assertions", () => {
+    const result = runner.lintRedTest("func TestAdd(t *testing.T) {\n  _ = Add(1, 2)\n}\n");
+    expect(result.blocking.some((b) => /no assertions found/.test(b))).toBe(true);
+  });
+});
+
 describe("computeGoMutationScore TS flow", () => {
   let dir: string;
   let mutatorSpy: ReturnType<typeof vi.spyOn>;

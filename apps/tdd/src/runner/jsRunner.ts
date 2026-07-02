@@ -8,6 +8,31 @@ import type { FileSymbols } from "../phases/map.js";
 import type { MutationOptions, RunClassification, StaticGateResult, TargetRunner, TestRunResult } from "./types.js";
 import { extractJsSymbols } from "./jsSymbols.js";
 
+const SINGLE_ASSERTION_TRIANGULATION_WARNING =
+  "only one assertion found -- a single example does not triangulate; consider a second, differently-valued case";
+
+export function lintRedTestJs(testSource: string): import("../gates/redLinter.js").RedLintResult {
+  const blocking: string[] = [];
+  const warnings: string[] = [];
+
+  if (testSource.trim().length === 0) {
+    blocking.push("test file is empty");
+    return { blocking, warnings };
+  }
+
+  const expectCount = (testSource.match(/\bexpect\s*\(/g) ?? []).length;
+  const assertLineCount = (testSource.match(/^\s*assert\b/gm) ?? []).length;
+  const assertionCount = expectCount + assertLineCount;
+
+  if (assertionCount === 0) {
+    blocking.push("no assertions found (expect(...) or assert)");
+  } else if (assertionCount === 1) {
+    warnings.push(SINGLE_ASSERTION_TRIANGULATION_WARNING);
+  }
+
+  return { blocking, warnings };
+}
+
 export const VITEST_RED_PROMPT_RULES =
   "Import the target module with a dynamic `await import(...)` INSIDE the async test function — never a top-level static import of a symbol that may not exist yet, so a missing export fails only your test instead of breaking collection of the whole file.";
 
@@ -331,5 +356,7 @@ export async function createJsRunner(targetDir: string): Promise<TargetRunner> {
     },
 
     runStaticGates,
+
+    lintRedTest: lintRedTestJs,
   };
 }

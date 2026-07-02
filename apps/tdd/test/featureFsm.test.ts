@@ -71,6 +71,9 @@ describe("runFeature", () => {
         const pycacheDir = join(opts.cwd, "__pycache__");
         mkdirSync(pycacheDir, { recursive: true });
         writeFileSync(join(pycacheDir, "add_kata.cpython-313.pyc"), "fake bytecode");
+        const nodeModulesDir = join(opts.cwd, "node_modules", "fake-pkg");
+        mkdirSync(nodeModulesDir, { recursive: true });
+        writeFileSync(join(nodeModulesDir, "index.js"), "module.exports = {};\n");
       },
     ]);
 
@@ -108,6 +111,7 @@ describe("runFeature", () => {
       cwd: targetDir,
     });
     expect(tree.stdout).not.toContain("__pycache__"); // bytecode caches never committed onto the run branch
+    expect(tree.stdout).not.toContain("node_modules"); // installed deps never committed onto the run branch
   });
 
   it("stops at plan and does not execute any slice when hitl is plan-only", async () => {

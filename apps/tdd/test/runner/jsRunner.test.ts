@@ -417,3 +417,54 @@ describe("createJsRunner predicates", () => {
     rmSync(dir, { recursive: true, force: true });
   });
 });
+
+describe("createJsRunner lintRedTest", () => {
+  it("passes lint for expect-based tests with multiple assertions", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "js-runner-"));
+    initGit(dir);
+    writeJson(join(dir, "package.json"), { devDependencies: { vitest: "^1.0.0" } });
+    const runner = await createJsRunner(dir);
+    const result = runner.lintRedTest(
+      "import { describe, expect, it } from 'vitest';\n" +
+        "describe('add', () => {\n" +
+        "  it('adds', () => {\n" +
+        "    expect(1 + 1).toBe(2);\n" +
+        "    expect(2 + 2).toBe(4);\n" +
+        "  });\n" +
+        "});\n",
+    );
+    expect(result.blocking).toEqual([]);
+    expect(result.warnings.some((w) => /triangulat/.test(w))).toBe(false);
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("blocks an empty test file", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "js-runner-"));
+    initGit(dir);
+    writeJson(join(dir, "package.json"), { devDependencies: { vitest: "^1.0.0" } });
+    const runner = await createJsRunner(dir);
+    expect(runner.lintRedTest("").blocking).toContain("test file is empty");
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("blocks a test file with no assertions", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "js-runner-"));
+    initGit(dir);
+    writeJson(join(dir, "package.json"), { devDependencies: { vitest: "^1.0.0" } });
+    const runner = await createJsRunner(dir);
+    const result = runner.lintRedTest("describe('x', () => { it('y', () => {}); });\n");
+    expect(result.blocking).toContain("no assertions found (expect(...) or assert)");
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("warns on a single expect assertion", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "js-runner-"));
+    initGit(dir);
+    writeJson(join(dir, "package.json"), { devDependencies: { vitest: "^1.0.0" } });
+    const runner = await createJsRunner(dir);
+    const result = runner.lintRedTest("it('adds', () => { expect(1 + 1).toBe(2); });\n");
+    expect(result.blocking).toEqual([]);
+    expect(result.warnings.some((w) => /triangulat/.test(w))).toBe(true);
+    rmSync(dir, { recursive: true, force: true });
+  });
+});

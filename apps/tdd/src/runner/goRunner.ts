@@ -7,6 +7,31 @@ import { computeGoMutationScore } from "./goMutation.js";
 import { extractGoSymbols } from "./goSymbols.js";
 import type { RunClassification, StaticGateResult, TargetRunner, TestRunResult } from "./types.js";
 
+const SINGLE_ASSERTION_TRIANGULATION_WARNING =
+  "only one assertion found -- a single example does not triangulate; consider a second, differently-valued case";
+
+export function lintRedTestGo(testSource: string): import("../gates/redLinter.js").RedLintResult {
+  const blocking: string[] = [];
+  const warnings: string[] = [];
+
+  if (testSource.trim().length === 0) {
+    blocking.push("test file is empty");
+    return { blocking, warnings };
+  }
+
+  const tCallCount = (testSource.match(/\bt\.(Error|Errorf|Fatal|Fatalf|FailNow)\s*\(/g) ?? []).length;
+  const testifyCount = (testSource.match(/\b(assert|require)\.\w+\s*\(/g) ?? []).length;
+  const assertionCount = tCallCount + testifyCount;
+
+  if (assertionCount === 0) {
+    blocking.push("no assertions found (t.Error/t.Errorf or assert/require)");
+  } else if (assertionCount === 1 && !/\brange\b/.test(testSource)) {
+    warnings.push(SINGLE_ASSERTION_TRIANGULATION_WARNING);
+  }
+
+  return { blocking, warnings };
+}
+
 export const GO_RED_PROMPT_RULES =
   "Reference the new symbol directly in your test as if it already exists. " +
   "In Go a missing symbol makes the package fail to COMPILE — that compile failure " +
@@ -217,5 +242,7 @@ export function createGoRunner(_targetDir: string): TargetRunner {
     },
 
     runStaticGates,
+
+    lintRedTest: lintRedTestGo,
   };
 }

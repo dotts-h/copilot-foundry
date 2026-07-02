@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { isMissingSymbolError } from "../runner/pythonRunner.js";
 import type { TargetRunner } from "../runner/types.js";
 import type { BaselineReport } from "../phases/baseline.js";
-import { lintRedTest, type RedLintResult } from "./redLinter.js";
+import type { RedLintResult } from "./redLinter.js";
 
 export type RedOutcome =
   | "failed_as_expected"
@@ -41,7 +41,7 @@ export async function classifyRedOutcome(opts: {
   }
 
   const testSource = await readFile(testFilePath, "utf8");
-  const lint = lintRedTest(testSource);
+  const lint = opts.runner.lintRedTest(testSource);
 
   const firstRun = await opts.runner.runTests(opts.targetDir, opts.testRelPath);
   const secondRun = await opts.runner.runTests(opts.targetDir, opts.testRelPath);

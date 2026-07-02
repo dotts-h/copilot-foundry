@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { runCommand } from "../exec.js";
 import { computeMutationScore as computeMutationScoreImpl } from "../gates/mutationGate.js";
+import { lintRedTest } from "../gates/redLinter.js";
 import { parsePytestVerboseOutput } from "../phases/baseline.js";
 import type { FileSymbols } from "../phases/map.js";
 import type { RunClassification, TargetRunner, TestRunResult } from "./types.js";
@@ -293,5 +294,7 @@ export function createPythonRunner(venvDir: string): TargetRunner {
     async runStaticGates(_workDir: string) {
       return [];
     },
+
+    lintRedTest,
   };
 }
