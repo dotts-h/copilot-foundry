@@ -137,6 +137,25 @@ describe("mapRepo", () => {
     });
   });
 
+  it("marks unreadable or non-utf8 files as unparsed without failing the whole extraction", async () => {
+    writeFileSync(join(dir, "good.py"), "def ok() -> int:\n    return 1\n");
+    writeFileSync(join(dir, "bad.py"), Buffer.from([0xff, 0xfe, 0xfd]));
+
+    const map = await mapRepo(dir, FIXTURE_VENV);
+
+    expect(map.symbols["good.py"]).toEqual({
+      functions: [{ name: "ok", signature: "ok() -> int", line: 1 }],
+      classes: [],
+      constants: [],
+    });
+    expect(map.symbols["bad.py"]).toEqual({
+      functions: [],
+      classes: [],
+      constants: [],
+      error: "unparsed",
+    });
+  });
+
   it("returns empty symbols when venvDir is omitted", async () => {
     writeFileSync(join(dir, "sample.py"), "def foo() -> None:\n    pass\n");
 

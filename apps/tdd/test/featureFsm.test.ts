@@ -90,7 +90,10 @@ describe("runFeature", () => {
     expect(backend.calls[0].lockedPaths).toBeUndefined(); // plan
     expect(backend.calls[1].lockedPaths).toEqual(["add_kata.py"]); // RED locks impl
     expect(backend.calls[1].prompt).toContain("import it inside the new test function(s) instead");
+    expect(backend.calls[1].prompt).toContain("Current symbols in the implementation module");
+    expect(backend.calls[1].prompt).toContain("already exists in add_kata.py");
     expect(backend.calls[2].lockedPaths).toEqual(["test_add_kata.py"]); // GREEN locks test
+    expect(backend.calls[2].prompt).toContain("Current symbols in the implementation module");
 
     expect(ledger.workspace.branchName).toBe("helm-tdd/run-feature-1");
     const show = await runCommand("git", ["show", "helm-tdd/run-feature-1:add_kata.py"], { cwd: targetDir });

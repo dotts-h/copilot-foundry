@@ -163,8 +163,17 @@ def main():
     rel_paths = sys.argv[2:]
     output = {}
     for rel_path in rel_paths:
-        with open(f"{root}/{rel_path}", encoding="utf-8") as fh:
-            source = fh.read()
+        try:
+            with open(f"{root}/{rel_path}", encoding="utf-8") as fh:
+                source = fh.read()
+        except (OSError, UnicodeDecodeError):
+            output[rel_path] = {
+                "functions": [],
+                "classes": [],
+                "constants": [],
+                "error": "unparsed",
+            }
+            continue
         symbols = extract_file_symbols(source)
         if symbols is not None:
             output[rel_path] = symbols

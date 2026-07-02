@@ -130,4 +130,62 @@ describe("planSlices", () => {
       }),
     ).rejects.toThrow(/non-empty/);
   });
+
+  it("includes known symbols in the prompt when the repo map has symbol entries", async () => {
+    const backend = new ScriptedBackend([
+      () => ({
+        resultText: JSON.stringify([
+          { description: "a", implRelPath: "x.py", testRelPath: "test_x.py", functionName: "a" },
+        ]),
+      }),
+    ]);
+
+    const repoMap: RepoMap = {
+      files: ["x.py"],
+      testFiles: [],
+      imports: {},
+      symbols: {
+        "x.py": {
+          functions: [{ name: "a", signature: "a(x: int) -> str", line: 1 }],
+          classes: [],
+          constants: [],
+        },
+      },
+    };
+
+    await planSlices({
+      backend,
+      model: "fake-plan",
+      targetDir: "/tmp/whatever",
+      featureDescription: "x",
+      repoMap,
+      scopeReport: { inScope: ["x.py"], reason: "scope=repo" },
+    });
+
+    expect(backend.calls[0].prompt).toContain(
+      "Known symbols in the in-scope files (signatures extracted from the code — trust these, do not re-read files to rediscover them):",
+    );
+    expect(backend.calls[0].prompt).toContain("a(x: int) -> str");
+  });
+
+  it("omits the known symbols header when symbols is empty", async () => {
+    const backend = new ScriptedBackend([
+      () => ({
+        resultText: JSON.stringify([
+          { description: "a", implRelPath: "x.py", testRelPath: "test_x.py", functionName: "a" },
+        ]),
+      }),
+    ]);
+
+    await planSlices({
+      backend,
+      model: "fake-plan",
+      targetDir: "/tmp/whatever",
+      featureDescription: "x",
+      repoMap: EMPTY_MAP,
+      scopeReport: { inScope: ["x.py"], reason: "scope=repo" },
+    });
+
+    expect(backend.calls[0].prompt).not.toContain("Known symbols in the in-scope files");
+  });
 });

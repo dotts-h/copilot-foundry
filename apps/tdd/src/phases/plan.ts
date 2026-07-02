@@ -1,6 +1,7 @@
 import type { Backend } from "../backend/types.js";
 import type { RepoMap } from "./map.js";
 import type { ScopeReport } from "./scope.js";
+import { PLAN_SYMBOLS_CAP, renderSymbols } from "./symbolRender.js";
 
 export interface PlannedSlice {
   description: string;
@@ -19,7 +20,7 @@ export interface PlanSlicesOptions {
 }
 
 function buildPlanPrompt(opts: PlanSlicesOptions): string {
-  return [
+  const lines = [
     "You are the planning phase of a TDD workflow. Decompose the feature below into an ORDERED list of",
     "small, independently-testable vertical slices. Each slice implements one behavior in one function.",
     "Do NOT split a single function's input domain (e.g. positive/negative/zero cases) across multiple",
@@ -28,13 +29,26 @@ function buildPlanPrompt(opts: PlanSlicesOptions): string {
     "",
     `Feature: ${opts.featureDescription}`,
     `In-scope files: ${opts.scopeReport.inScope.join(", ") || "(none yet -- new files may be needed)"}`,
+  ];
+
+  const symbolsBlock = renderSymbols(opts.repoMap, opts.scopeReport.inScope, PLAN_SYMBOLS_CAP);
+  if (symbolsBlock) {
+    lines.push(
+      "Known symbols in the in-scope files (signatures extracted from the code — trust these, do not re-read files to rediscover them):",
+      symbolsBlock,
+    );
+  }
+
+  lines.push(
     "",
     "Respond with ONLY a JSON array, no prose, no markdown fences. Each element must be exactly:",
     '{"description": string, "implRelPath": string, "testRelPath": string, "functionName": string}',
     "implRelPath and testRelPath are relative paths inside the target Python repo. functionName is the",
     'exact name of the single Python function this slice implements or modifies (a valid Python',
     'identifier, e.g. "add" or "reverse_words") -- used downstream for mutation testing.',
-  ].join("\n");
+  );
+
+  return lines.join("\n");
 }
 
 function extractJsonArray(text: string): string {
