@@ -2,7 +2,10 @@ import { query } from "@anthropic-ai/claude-agent-sdk";
 import type { Backend, RunPhaseOptions, RunPhaseResult } from "./types.js";
 import { evaluateLeash } from "./claudeLeash.js";
 
-const DEFAULT_TIMEOUT_MS = 300_000;
+// A GREEN phase on a real repo runs the agent through repeated full test cycles
+// (twiceshy: go test ./... is ~2min in a fresh worktree), so 300s aborted
+// legitimately-progressing phases (run db559cf1 died at slice 6/9 GREEN).
+const DEFAULT_TIMEOUT_MS = 900_000;
 const MAX_TURNS = 40;
 
 export class ClaudeBackend implements Backend {
