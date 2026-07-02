@@ -16,6 +16,9 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.13"
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
       - run: npm install
       - run: bash apps/tdd/fixtures/add-kata/setup-venv.sh
       - run: bash apps/tdd/fixtures/strings-kata/setup-venv.sh
