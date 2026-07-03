@@ -95,7 +95,10 @@ export function parseVitestVerboseOutput(raw: string): BaselineTestResult[] {
   while ((match = lineRegex.exec(cleaned)) !== null) {
     const marker = match[1];
     const filePath = match[2];
-    const testName = match[3].trim();
+    // Vitest's verbose reporter appends a bare duration ("… 2ms") to slower tests only,
+    // so leaving it in the name makes nodeIds unstable across runs (caught live by the
+    // missing-baseline-test gate: baseline "… 2ms" vs final "… 1ms" = spurious deletion).
+    const testName = match[3].trim().replace(/\s+\d+(?:\.\d+)?m?s$/, "");
     let outcome: BaselineTestResult["outcome"];
     if (marker === "✓" || marker === "√") {
       outcome = "passed";

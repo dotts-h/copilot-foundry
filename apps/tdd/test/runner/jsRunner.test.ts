@@ -57,6 +57,22 @@ describe("parseVitestVerboseOutput", () => {
       { nodeId: "src/math.test.ts::skipped case", outcome: "skipped" },
     ]);
   });
+
+  it("strips the intermittent trailing duration so nodeIds are stable across runs", () => {
+    // The reporter appends "… 2ms" only to slower tests, so the same test can carry a
+    // duration in one scan and not the next — caught live as a spurious missing-baseline-test.
+    const raw = [
+      " ✓ test/format.test.ts > formatMoney > formats a simple integer 2ms",
+      " ✓ test/format.test.ts > formatMoney > formats a simple integer",
+      " ✓ test/format.test.ts > formatAge > renders 1.5s as seconds 305ms",
+    ].join("\n");
+
+    expect(parseVitestVerboseOutput(raw)).toEqual([
+      { nodeId: "test/format.test.ts::formatMoney > formats a simple integer", outcome: "passed" },
+      { nodeId: "test/format.test.ts::formatMoney > formats a simple integer", outcome: "passed" },
+      { nodeId: "test/format.test.ts::formatAge > renders 1.5s as seconds", outcome: "passed" },
+    ]);
+  });
 });
 
 describe("parseJestVerboseOutput", () => {
