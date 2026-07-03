@@ -1,7 +1,7 @@
 import { writeArtifact } from "./artifacts/vault.js";
 import type { Backend, PhaseTelemetry } from "./backend/types.js";
 import { runCommand } from "./exec.js";
-import { attemptRefactor } from "./gates/refactorGate.js";
+import { attemptRefactor, type RefactorScopeViolation } from "./gates/refactorGate.js";
 import { classifyRedOutcome, type RedGateResult, type RedOutcome } from "./gates/redGate.js";
 import { runGreenWithRepair } from "./gates/greenGate.js";
 import type { RedLintResult } from "./gates/redLinter.js";
@@ -38,6 +38,7 @@ export interface SliceExecutionResult {
   greenEscalated: boolean;
   diffGuardViolated: boolean;
   refactorApplied: boolean;
+  refactorScopeViolation: RefactorScopeViolation | null;
   mutationScore: MutationScoreResult | null;
   phaseTelemetry: SlicePhaseTelemetry;
 }
@@ -209,7 +210,9 @@ function buildRefactorPrompt(slice: PlannedSlice): string {
   return (
     `The test at ${slice.testRelPath} is currently passing against ${slice.implRelPath}. Mechanically ` +
     "clean up the implementation (naming, redundant code, obvious simplifications) WITHOUT changing " +
-    `its behavior. Do NOT modify ${slice.testRelPath} under any circumstances -- it is locked and any ` +
+    `its behavior. Confine your changes to ${slice.functionName} and any new helper functions you extract ` +
+    "from it -- edits elsewhere in the file will be reverted. " +
+    `Do NOT modify ${slice.testRelPath} under any circumstances -- it is locked and any ` +
     "attempt to edit it will be reverted."
   );
 }
@@ -397,6 +400,7 @@ export async function runFeature(
           greenEscalated: false,
           diffGuardViolated: false,
           refactorApplied: false,
+          refactorScopeViolation: null,
           mutationScore: null,
           phaseTelemetry: { red: redPhase.telemetry, green: [], refactor: null },
         });
@@ -427,6 +431,7 @@ export async function runFeature(
           greenEscalated: greenResult.escalated,
           diffGuardViolated: greenResult.diffGuardViolated,
           refactorApplied: false,
+          refactorScopeViolation: null,
           mutationScore: null,
           phaseTelemetry: {
             red: redPhase.telemetry,
@@ -447,9 +452,17 @@ export async function runFeature(
         venvDir: spec.venvDir,
         implRelPath: slice.implRelPath,
         testRelPath: slice.testRelPath,
+        functionName: slice.functionName,
         refactorModel: spec.models.green,
         buildPrompt: () => buildRefactorPrompt(slice),
       });
+
+      if (refactorResult.scopeViolation) {
+        await writeArtifact(artifactRoot, runId, `slice-${i}-refactor-scope`, {
+          offendingHunks: refactorResult.scopeViolation.offendingHunks,
+          allowed: refactorResult.scopeAllowed ?? [],
+        });
+      }
 
       if (refactorResult.applied) {
         await commitAll(workDir, `refactor: ${runId} slice ${i}`);
@@ -483,6 +496,7 @@ export async function runFeature(
           greenEscalated: greenResult.escalated,
           diffGuardViolated: greenResult.diffGuardViolated,
           refactorApplied: refactorResult.applied,
+          refactorScopeViolation: refactorResult.scopeViolation,
           mutationScore,
           phaseTelemetry: slicePhaseTelemetry,
         });
@@ -500,6 +514,7 @@ export async function runFeature(
           greenEscalated: greenResult.escalated,
           diffGuardViolated: greenResult.diffGuardViolated,
           refactorApplied: refactorResult.applied,
+          refactorScopeViolation: refactorResult.scopeViolation,
           mutationScore,
           phaseTelemetry: slicePhaseTelemetry,
         });
@@ -517,6 +532,7 @@ export async function runFeature(
         greenEscalated: greenResult.escalated,
         diffGuardViolated: greenResult.diffGuardViolated,
         refactorApplied: refactorResult.applied,
+        refactorScopeViolation: refactorResult.scopeViolation,
         mutationScore,
         phaseTelemetry: slicePhaseTelemetry,
       });

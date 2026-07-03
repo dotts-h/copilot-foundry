@@ -119,6 +119,7 @@ describe("runFeature", () => {
     expect(backend.calls[1].prompt).toContain("already exists in add_kata.py");
     expect(backend.calls[2].lockedPaths).toEqual(["test_add_kata.py"]); // GREEN locks test
     expect(backend.calls[2].prompt).toContain("Current symbols in the implementation module");
+    expect(backend.calls[3].prompt).toContain("Confine your changes to add and any new helper functions you extract");
 
     expect(ledger.workspace.branchName).toBe("helm-tdd/run-feature-1");
     const show = await runCommand("git", ["show", "helm-tdd/run-feature-1:add_kata.py"], { cwd: targetDir });
