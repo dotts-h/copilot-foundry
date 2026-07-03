@@ -49,6 +49,8 @@ describe("runGreenWithRepair", () => {
     expect(result.passed).toBe(true);
     expect(result.iterationsUsed).toBe(1);
     expect(result.escalated).toBe(false);
+    expect(result.attempts).toHaveLength(1);
+    expect(result.attempts[0].rawTestOutput.length).toBeGreaterThan(0);
     expect(backend.calls).toHaveLength(1);
   });
 
@@ -73,6 +75,7 @@ describe("runGreenWithRepair", () => {
     expect(result.passed).toBe(true);
     expect(result.iterationsUsed).toBe(2);
     expect(result.failureHistory).toHaveLength(1);
+    expect(result.attempts).toHaveLength(2);
     expect(backend.calls).toHaveLength(2);
   });
 
@@ -98,6 +101,7 @@ describe("runGreenWithRepair", () => {
     expect(result.passed).toBe(true);
     expect(result.escalated).toBe(true);
     expect(result.iterationsUsed).toBe(3);
+    expect(result.attempts).toHaveLength(3);
     expect(backend.calls[2].model).toBe("fake-escalation");
   });
 

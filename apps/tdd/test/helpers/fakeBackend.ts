@@ -2,7 +2,7 @@ import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { Backend, RunPhaseOptions, RunPhaseResult } from "../../src/backend/types.js";
 
-type StepOutcome = { resultText?: string; success?: boolean } | void;
+type StepOutcome = { resultText?: string; success?: boolean; telemetry?: { denials: [] } } | void;
 type Step = (opts: RunPhaseOptions) => Promise<StepOutcome> | StepOutcome;
 
 export class ScriptedBackend implements Backend {
@@ -24,6 +24,7 @@ export class ScriptedBackend implements Backend {
       success: outcome?.success ?? true,
       resultText: outcome?.resultText ?? "scripted",
       durationMs: 1,
+      telemetry: outcome?.telemetry ?? { denials: [] },
     };
   }
 }

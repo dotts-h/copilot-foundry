@@ -2,6 +2,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
+import { readArtifact } from "../src/artifacts/vault.js";
 import { runCommand } from "../src/exec.js";
 import { runFeature } from "../src/featureFsm.js";
 import { DEFAULT_MODELS_BY_BACKEND, type FeatureRunSpec } from "../src/types.js";
@@ -91,6 +92,16 @@ describe("runFeature", () => {
       false,
     );
     expect(ledger.writebackResult?.committed).toBe(false);
+    expect(ledger.sliceResults[0].phaseTelemetry.green).toHaveLength(1);
+    expect(ledger.totalDenials).toBe(0);
+    expect(ledger.planTelemetry).toBeDefined();
+    const greenAttempts = await readArtifact<Array<{ attempt: number; rawTestOutput: string }>>(
+      artifactRoot,
+      "run-feature-1",
+      "slice-0-green-attempts",
+    );
+    expect(greenAttempts).toHaveLength(1);
+    expect(greenAttempts[0].rawTestOutput.length).toBeGreaterThan(0);
     expect(backend.calls[0].lockedPaths).toBeUndefined(); // plan
     expect(backend.calls[1].lockedPaths).toEqual(["add_kata.py"]); // RED locks impl
     expect(backend.calls[1].prompt).toContain("import it inside the new test function(s) instead");

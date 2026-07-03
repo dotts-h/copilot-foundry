@@ -19,6 +19,7 @@ export interface RedGateResult {
   passed: boolean;
   lint: RedLintResult;
   preexistingRegressionPaths: string[];
+  rawRuns: string[];
 }
 
 export { isMissingSymbolError as isMissingSymbolCollectionError };
@@ -38,6 +39,7 @@ export async function classifyRedOutcome(opts: {
       passed: false,
       lint: { blocking: ["test file was not created"], warnings: [] },
       preexistingRegressionPaths: [],
+      rawRuns: [],
     };
   }
 
@@ -88,5 +90,6 @@ export async function classifyRedOutcome(opts: {
     passed: outcome === "failed_as_expected" && lint.blocking.length === 0,
     lint,
     preexistingRegressionPaths,
+    rawRuns: [firstRun.raw, secondRun.raw],
   };
 }

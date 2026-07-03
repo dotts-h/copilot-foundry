@@ -1,6 +1,6 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import type { Backend } from "../backend/types.js";
+import type { Backend, PhaseTelemetry } from "../backend/types.js";
 import { runCommand } from "../exec.js";
 import type { TargetRunner } from "../runner/types.js";
 import { checkDiffGuard, revertPaths } from "./diffGuard.js";
@@ -52,6 +52,8 @@ export interface RefactorAttemptResult {
   before: RefactorMetrics | null;
   after: RefactorMetrics | null;
   reason: string;
+  telemetry: PhaseTelemetry | null;
+  rawTestOutput: string | null;
 }
 
 function ratchetHolds(before: RefactorMetrics, after: RefactorMetrics): boolean {
@@ -70,7 +72,7 @@ export async function attemptRefactor(opts: RefactorAttemptOptions): Promise<Ref
     before = await measurePythonFile(opts.venvDir, implPath);
   }
 
-  await opts.backend.runPhase({
+  const phase = await opts.backend.runPhase({
     cwd: opts.targetDir,
     model: opts.refactorModel,
     prompt: opts.buildPrompt(),
@@ -85,11 +87,27 @@ export async function attemptRefactor(opts: RefactorAttemptOptions): Promise<Ref
   const testResult = await opts.runner.runTests(opts.targetDir, opts.testRelPath);
   if (opts.runner.classifyRun(testResult) !== "passed") {
     await writeFile(implPath, originalSource);
-    return { attempted: true, applied: false, before, after: null, reason: "refactor broke the test; reverted" };
+    return {
+      attempted: true,
+      applied: false,
+      before,
+      after: null,
+      reason: "refactor broke the test; reverted",
+      telemetry: phase.telemetry,
+      rawTestOutput: testResult.raw,
+    };
   }
 
   if (opts.runner.language !== "python") {
-    return { attempted: true, applied: true, before: null, after: null, reason: "refactor applied; tests pass" };
+    return {
+      attempted: true,
+      applied: true,
+      before: null,
+      after: null,
+      reason: "refactor applied; tests pass",
+      telemetry: phase.telemetry,
+      rawTestOutput: testResult.raw,
+    };
   }
 
   const after = await measurePythonFile(opts.venvDir!, implPath);
@@ -101,8 +119,18 @@ export async function attemptRefactor(opts: RefactorAttemptOptions): Promise<Ref
       before,
       after,
       reason: "ratchet violated (metrics worsened); reverted",
+      telemetry: phase.telemetry,
+      rawTestOutput: testResult.raw,
     };
   }
 
-  return { attempted: true, applied: true, before, after, reason: "refactor applied; ratchet holds" };
+  return {
+    attempted: true,
+    applied: true,
+    before,
+    after,
+    reason: "refactor applied; ratchet holds",
+    telemetry: phase.telemetry,
+    rawTestOutput: testResult.raw,
+  };
 }
