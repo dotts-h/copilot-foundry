@@ -46,6 +46,7 @@ export type FeatureRunStatus =
   | "accepted"
   | "verify_failed"
   | "mutation_gate_failed"
+  | "mutation_gate_error"
   | "completed_with_regressions"
   | "plan_only"
   | "red_gate_failed"
@@ -471,7 +472,24 @@ export async function runFeature(
       };
 
       const constantMutant = mutationScore.results.find((r) => r.operator === "constant");
-      if (constantMutant?.applied && constantMutant.survived === true) {
+      if (constantMutant?.outcome === "error") {
+        sliceResults.push({
+          slice,
+          redOutcome: redResult.outcome,
+          redGatePassed: true,
+          redLint: redResult.lint,
+          greenGatePassed: true,
+          greenIterationsUsed: greenResult.iterationsUsed,
+          greenEscalated: greenResult.escalated,
+          diffGuardViolated: greenResult.diffGuardViolated,
+          refactorApplied: refactorResult.applied,
+          mutationScore,
+          phaseTelemetry: slicePhaseTelemetry,
+        });
+        await writeSliceGateArtifacts(artifactRoot, runId, i, redResult, greenResult.attempts);
+        return await finish("mutation_gate_error", sliceResults, null, null, null);
+      }
+      if (constantMutant?.outcome === "applied" && constantMutant.survived === true) {
         sliceResults.push({
           slice,
           redOutcome: redResult.outcome,

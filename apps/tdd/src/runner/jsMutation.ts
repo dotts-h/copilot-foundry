@@ -113,16 +113,19 @@ async function applyOperatorMutation(
   const mutatedSource = applyJsMutation(originalSource, opts.implRelPath, opts.functionName, operator);
 
   if (mutatedSource === null) {
-    return { operator, applied: false, survived: null };
+    return { operator, outcome: "not_applicable", survived: null };
   }
 
   try {
     await writeFile(implPath, mutatedSource);
     const testResult = await runTestsFocused();
     if (classifyJsRun(framework, testResult) === "harness_error") {
-      return { operator, applied: false, survived: null };
+      return { operator, outcome: "not_applicable", survived: null };
     }
-    return { operator, applied: true, survived: testResult.exitCode === 0 };
+    return { operator, outcome: "applied", survived: testResult.exitCode === 0 };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return { operator, outcome: "error", survived: null, reason: message };
   } finally {
     await writeFile(implPath, originalSource);
   }
@@ -141,7 +144,7 @@ export async function computeJsMutationScore(
     results.push(result);
   }
 
-  const attempted = results.filter((r) => r.applied);
+  const attempted = results.filter((r) => r.outcome === "applied");
   const killed = attempted.filter((r) => r.survived === false);
   const survived = attempted.filter((r) => r.survived === true);
 

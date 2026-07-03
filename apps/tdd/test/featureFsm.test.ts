@@ -1,12 +1,22 @@
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { readArtifact } from "../src/artifacts/vault.js";
 import { runCommand } from "../src/exec.js";
 import { runFeature } from "../src/featureFsm.js";
 import { DEFAULT_MODELS_BY_BACKEND, type FeatureRunSpec } from "../src/types.js";
 import { ScriptedBackend, writeImpl } from "./helpers/fakeBackend.js";
+
+vi.mock("../src/gates/mutationGate.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../src/gates/mutationGate.js")>();
+  return {
+    ...actual,
+    computeMutationScore: vi.fn((opts: Parameters<typeof actual.computeMutationScore>[0]) =>
+      actual.computeMutationScore(opts),
+    ),
+  };
+});
 
 const FIXTURE_VENV = join(process.cwd(), "fixtures", "add-kata", ".venv");
 
@@ -452,5 +462,47 @@ describe("runFeature", () => {
     expect(
       ledger.sliceResults[0].mutationScore?.results.find((r) => r.operator === "constant")?.survived,
     ).toBe(true);
+  });
+
+  it("reports mutation_gate_error when the constant operator fails with an error outcome", async () => {
+    const { computeMutationScore } = await import("../src/gates/mutationGate.js");
+    vi.mocked(computeMutationScore).mockResolvedValueOnce({
+      results: [{ operator: "constant", outcome: "error", survived: null, reason: "broken python" }],
+      killedCount: 0,
+      survivedCount: 0,
+      attemptedCount: 0,
+      score: 1,
+    });
+
+    targetDir = await seedTargetRepo();
+    artifactRoot = mkdtempSync(join(tmpdir(), "feature-fsm-artifacts-"));
+
+    const backend = new ScriptedBackend([
+      () => ({
+        resultText: JSON.stringify([
+          {
+            description: "add(a, b) returns a + b",
+            implRelPath: "add_kata.py",
+            testRelPath: "test_add_kata.py",
+            functionName: "add",
+          },
+        ]),
+      }),
+      async (opts) => {
+        writeFileSync(
+          join(opts.cwd, "test_add_kata.py"),
+          "from add_kata import add\n\ndef test_add():\n    assert add(2, 3) == 5\n    assert add(0, 0) == 0\n",
+        );
+      },
+      async (opts) => writeImpl(opts.cwd, "add_kata.py", "def add(a, b):\n    return a + b\n"),
+    ]);
+
+    const ledger = await runFeature(baseSpec({ targetDir }), backend, artifactRoot, "run-mutation-gate-error");
+
+    expect(ledger.status).toBe("mutation_gate_error");
+    expect(ledger.sliceResults[0].greenGatePassed).toBe(true);
+    const constant = ledger.sliceResults[0].mutationScore?.results.find((r) => r.operator === "constant");
+    expect(constant?.outcome).toBe("error");
+    expect(constant?.reason).toBe("broken python");
   });
 });

@@ -378,7 +378,7 @@ describe("computeGoMutationScore TS flow", () => {
     if (dir) rmSync(dir, { recursive: true, force: true });
   });
 
-  it("reports applied:false when the operator does not apply", async () => {
+  it("reports outcome:not_applicable when the operator does not apply", async () => {
     dir = mkdtempSync(join(tmpdir(), "go-mutation-"));
     writeFileSync(join(dir, "math.go"), "package math\n\nfunc Add(a, b int) int {\n\treturn a + b\n}\n");
     mutatorSpy = vi.spyOn(goMutationDeps, "runGoMutator").mockResolvedValue({
@@ -394,7 +394,7 @@ describe("computeGoMutationScore TS flow", () => {
     }, classifyGoRun);
 
     const comparison = score.results.find((r) => r.operator === "comparison-swap");
-    expect(comparison).toEqual({ operator: "comparison-swap", applied: false, survived: null });
+    expect(comparison).toEqual({ operator: "comparison-swap", outcome: "not_applicable", survived: null });
     expect(runTestsFocused).not.toHaveBeenCalled();
   });
 
@@ -422,7 +422,7 @@ describe("computeGoMutationScore TS flow", () => {
     expect(readFileSync(join(dir, "math.go"), "utf8")).toBe(source);
   });
 
-  it("treats harness_error focused runs as applied:false", async () => {
+  it("treats harness_error focused runs as outcome:not_applicable", async () => {
     dir = mkdtempSync(join(tmpdir(), "go-mutation-"));
     writeFileSync(join(dir, "math.go"), "package math\n\nfunc Add(a, b int) int {\n\treturn a + b\n}\n");
     mutatorSpy = vi.spyOn(goMutationDeps, "runGoMutator").mockImplementation(
@@ -444,7 +444,7 @@ describe("computeGoMutationScore TS flow", () => {
     }, classifyGoRun);
 
     const arithmetic = score.results.find((r) => r.operator === "arithmetic-swap");
-    expect(arithmetic).toEqual({ operator: "arithmetic-swap", applied: false, survived: null });
+    expect(arithmetic).toEqual({ operator: "arithmetic-swap", outcome: "not_applicable", survived: null });
   });
 
   it("computes score from killed mutants with stubbed focused runs", async () => {
@@ -466,7 +466,7 @@ describe("computeGoMutationScore TS flow", () => {
     }, classifyGoRun);
 
     const arithmetic = score.results.find((r) => r.operator === "arithmetic-swap");
-    expect(arithmetic?.applied).toBe(true);
+    expect(arithmetic?.outcome).toBe("applied");
     expect(arithmetic?.survived).toBe(false);
     expect(score.attemptedCount).toBeGreaterThan(0);
     expect(score.score).toBeGreaterThan(0);

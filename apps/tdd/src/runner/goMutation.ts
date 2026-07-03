@@ -236,7 +236,7 @@ export async function runGoMutator(
   implPath: string,
   functionName: string,
   operator: GoMutationOperator,
-): Promise<{ applicable: boolean; mutatedSource?: string }> {
+): Promise<{ applicable: boolean; mutatedSource?: string; error?: string }> {
   const scriptPath = join(tmpdir(), `tdd-mutate-${randomBytes(8).toString("hex")}.go`);
   try {
     await writeFile(scriptPath, GO_MUTATOR, "utf8");
@@ -244,7 +244,10 @@ export async function runGoMutator(
       timeoutMs: 30_000,
     });
     if (result.exitCode !== 0) {
-      return { applicable: false };
+      return {
+        applicable: false,
+        error: `go mutator failed (exit ${result.exitCode}): ${result.stderr}`,
+      };
     }
     try {
       const parsed = JSON.parse(result.stdout.trim()) as { applicable: boolean; mutatedSource?: string };
@@ -253,10 +256,14 @@ export async function runGoMutator(
       }
       return parsed;
     } catch {
-      return { applicable: false };
+      return {
+        applicable: false,
+        error: `go mutator returned invalid JSON: ${result.stdout}`,
+      };
     }
-  } catch {
-    return { applicable: false };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return { applicable: false, error: message };
   } finally {
     await unlink(scriptPath).catch(() => {});
   }
@@ -274,17 +281,21 @@ async function applyOperatorMutation(
   const originalSource = await readFile(implPath, "utf8");
   const mutation = await goMutationDeps.runGoMutator(implPath, opts.functionName, operator);
 
+  if (mutation.error) {
+    return { operator, outcome: "error", survived: null, reason: mutation.error };
+  }
+
   if (!mutation.applicable || mutation.mutatedSource === undefined) {
-    return { operator, applied: false, survived: null };
+    return { operator, outcome: "not_applicable", survived: null };
   }
 
   try {
     await writeFile(implPath, mutation.mutatedSource);
     const testResult = await runTestsFocused();
     if (classifyRun(testResult) === "harness_error") {
-      return { operator, applied: false, survived: null };
+      return { operator, outcome: "not_applicable", survived: null };
     }
-    return { operator, applied: true, survived: testResult.exitCode === 0 };
+    return { operator, outcome: "applied", survived: testResult.exitCode === 0 };
   } finally {
     await writeFile(implPath, originalSource);
   }
@@ -303,7 +314,7 @@ export async function computeGoMutationScore(
     results.push(result);
   }
 
-  const attempted = results.filter((r) => r.applied);
+  const attempted = results.filter((r) => r.outcome === "applied");
   const killed = attempted.filter((r) => r.survived === false);
   const survived = attempted.filter((r) => r.survived === true);
 

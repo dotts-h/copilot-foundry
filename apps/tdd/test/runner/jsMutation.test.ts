@@ -36,7 +36,7 @@ describe("computeJsMutationScore", () => {
     if (dir) rmSync(dir, { recursive: true, force: true });
   });
 
-  it("reports applied:false when the operator does not apply", async () => {
+  it("reports outcome:not_applicable when the operator does not apply", async () => {
     dir = mkdtempSync(join(tmpdir(), "js-mutation-"));
     const source = "export function add(a: number, b: number) {\n  return a + b;\n}\n";
     writeFileSync(join(dir, "math.ts"), source);
@@ -50,28 +50,29 @@ describe("computeJsMutationScore", () => {
     });
 
     const comparison = score.results.find((r) => r.operator === "comparison-swap");
-    expect(comparison).toEqual({ operator: "comparison-swap", applied: false, survived: null });
+    expect(comparison).toEqual({ operator: "comparison-swap", outcome: "not_applicable", survived: null });
   });
 
-  it("restores the original file even when runTestsFocused throws", async () => {
+  it("returns outcome:error when runTestsFocused throws, restoring the original file", async () => {
     dir = mkdtempSync(join(tmpdir(), "js-mutation-"));
     const source = "export function add(a: number, b: number) {\n  return a + b;\n}\n";
     writeFileSync(join(dir, "math.ts"), source);
     const runTestsFocused = vi.fn().mockRejectedValue(new Error("boom"));
 
-    await expect(
-      computeJsMutationScore(runTestsFocused, {
-        workDir: dir,
-        implRelPath: "math.ts",
-        functionName: "add",
-        testRelPath: "math.test.ts",
-      }),
-    ).rejects.toThrow("boom");
+    const score = await computeJsMutationScore(runTestsFocused, {
+      workDir: dir,
+      implRelPath: "math.ts",
+      functionName: "add",
+      testRelPath: "math.test.ts",
+    });
 
+    const arithmetic = score.results.find((r) => r.operator === "arithmetic-swap");
+    expect(arithmetic?.outcome).toBe("error");
+    expect(arithmetic?.reason).toBe("boom");
     expect(readFileSync(join(dir, "math.ts"), "utf8")).toBe(source);
   });
 
-  it("treats harness_error focused runs as applied:false", async () => {
+  it("treats harness_error focused runs as outcome:not_applicable", async () => {
     dir = mkdtempSync(join(tmpdir(), "js-mutation-"));
     writeFileSync(join(dir, "math.ts"), "export function add(a: number, b: number) {\n  return a + b;\n}\n");
     const runTestsFocused = vi.fn().mockResolvedValue({
@@ -87,7 +88,7 @@ describe("computeJsMutationScore", () => {
     });
 
     const arithmetic = score.results.find((r) => r.operator === "arithmetic-swap");
-    expect(arithmetic).toEqual({ operator: "arithmetic-swap", applied: false, survived: null });
+    expect(arithmetic).toEqual({ operator: "arithmetic-swap", outcome: "not_applicable", survived: null });
   });
 
   it("computes score from killed mutants", async () => {
@@ -103,7 +104,7 @@ describe("computeJsMutationScore", () => {
     });
 
     const arithmetic = score.results.find((r) => r.operator === "arithmetic-swap");
-    expect(arithmetic?.applied).toBe(true);
+    expect(arithmetic?.outcome).toBe("applied");
     expect(arithmetic?.survived).toBe(false);
     expect(score.attemptedCount).toBeGreaterThan(0);
     expect(score.score).toBeGreaterThan(0);
