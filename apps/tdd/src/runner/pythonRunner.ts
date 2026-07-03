@@ -7,7 +7,32 @@ import { computeMutationScore as computeMutationScoreImpl } from "../gates/mutat
 import { lintRedTest } from "../gates/redLinter.js";
 import { parsePytestVerboseOutput } from "../phases/baseline.js";
 import type { FileSymbols } from "../phases/map.js";
-import type { RunClassification, TargetRunner, TestRunResult } from "./types.js";
+import type { FunctionSpan, RunClassification, TargetRunner, TestRunResult } from "./types.js";
+
+const PYTHON_FUNCTION_SPANS_SCRIPT = `
+import ast, json, sys
+
+def span(node):
+    start = node.lineno
+    if node.decorator_list:
+        start = min(d.lineno for d in node.decorator_list)
+    end = node.end_lineno or node.lineno
+    return {"name": node.name, "startLine": start, "endLine": end}
+
+path = sys.argv[1]
+with open(path, encoding="utf-8") as f:
+    source = f.read()
+tree = ast.parse(source)
+spans = []
+for node in tree.body:
+    if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+        spans.append(span(node))
+    elif isinstance(node, ast.ClassDef):
+        for item in node.body:
+            if isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                spans.append(span(item))
+print(json.dumps(spans))
+`;
 
 const NO_TESTS_COLLECTED = 5;
 
@@ -255,6 +280,29 @@ export function createPythonRunner(venvDir: string): TargetRunner {
     return base.startsWith("test_") || base.endsWith("_test.py");
   }
 
+  async function functionSpans(filePath: string): Promise<FunctionSpan[]> {
+    const pythonBin = join(venvDir, "bin", "python3");
+    const result = await runCommand(pythonBin, ["-c", PYTHON_FUNCTION_SPANS_SCRIPT, filePath], {
+      env: { PYTHONDONTWRITEBYTECODE: "1" },
+      timeoutMs: 15_000,
+    });
+    if (result.exitCode !== 0) return [];
+    try {
+      const parsed: unknown = JSON.parse(result.stdout.trim());
+      if (!Array.isArray(parsed)) return [];
+      return parsed.filter(
+        (entry): entry is FunctionSpan =>
+          typeof entry === "object" &&
+          entry !== null &&
+          typeof (entry as FunctionSpan).name === "string" &&
+          typeof (entry as FunctionSpan).startLine === "number" &&
+          typeof (entry as FunctionSpan).endLine === "number",
+      );
+    } catch {
+      return [];
+    }
+  }
+
   return {
     language: "python",
     testFrameworkName: "pytest",
@@ -296,5 +344,7 @@ export function createPythonRunner(venvDir: string): TargetRunner {
     },
 
     lintRedTest,
+
+    functionSpans,
   };
 }

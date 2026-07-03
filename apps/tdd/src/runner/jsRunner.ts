@@ -7,7 +7,7 @@ import { classifyJsRun } from "./jsClassify.js";
 import { detectJsContext, findTsconfig, resolveBin, type JsContext } from "./jsContext.js";
 import type { FileSymbols } from "../phases/map.js";
 import type { MutationOptions, RunClassification, StaticGateResult, TargetRunner, TestRunResult } from "./types.js";
-import { extractJsSymbols } from "./jsSymbols.js";
+import { extractJsFunctionSpans, extractJsSymbols } from "./jsSymbols.js";
 
 const SINGLE_ASSERTION_TRIANGULATION_WARNING =
   "only one assertion found -- a single example does not triangulate; consider a second, differently-valued case";
@@ -365,5 +365,7 @@ export async function createJsRunner(targetDir: string): Promise<TargetRunner> {
     runStaticGates,
 
     lintRedTest: lintRedTestJs,
+
+    functionSpans: extractJsFunctionSpans,
   };
 }
