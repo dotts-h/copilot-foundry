@@ -77,8 +77,21 @@ export async function runVerifyLadder(opts: VerifyLadderOptions): Promise<Verify
         raw = parseFailure;
       } else {
         const newFailures = [...baselineSound].filter((p) => currentFailing.has(p));
-        passed = newFailures.length === 0;
-        raw = passed ? "" : `new failures vs baseline: ${newFailures.join(", ")}`;
+        // A deleted test produces no new failure, so baseline-relative failure checks alone
+        // cannot see it: every baseline-passing test must still EXIST in the final scan.
+        const currentIds = new Set(verbose.tests.map((t) => t.nodeId));
+        const missingBaselineTests = opts.baseline.tests
+          .filter((t) => t.outcome === "passed" && !currentIds.has(t.nodeId))
+          .map((t) => t.nodeId);
+        const problems: string[] = [];
+        if (newFailures.length > 0) {
+          problems.push(`new failures vs baseline: ${newFailures.join(", ")}`);
+        }
+        if (missingBaselineTests.length > 0) {
+          problems.push(`baseline tests missing from final suite: ${missingBaselineTests.join(", ")}`);
+        }
+        passed = problems.length === 0;
+        raw = problems.join("; ");
       }
 
       results.push({ level, passed, raw });

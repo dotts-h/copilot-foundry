@@ -21,14 +21,13 @@ with open(test_path) as f:
     test_source = f.read()
 test_tree = ast.parse(test_source)
 
-call_args = None
+candidates = []
 for node in ast.walk(test_tree):
     if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == function_name:
         if node.args and all(isinstance(a, ast.Constant) for a in node.args) and not node.keywords:
-            call_args = [a.value for a in node.args]
-            break
+            candidates.append([a.value for a in node.args])
 
-if call_args is None:
+if not candidates:
     print(json.dumps({"found": False}))
     sys.exit(0)
 
@@ -36,7 +35,23 @@ spec = importlib.util.spec_from_file_location("_target_module", impl_path)
 module = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(module)
 target_fn = getattr(module, function_name)
-result = target_fn(*call_args)
+
+# A candidate call that raises (e.g. the error-path input asserted via pytest.raises)
+# cannot seed a constant mutant; that is a property of the test's inputs, not a tooling
+# failure -- skip it and try the next candidate.
+call_args = None
+result = None
+for args in candidates:
+    try:
+        result = target_fn(*args)
+        call_args = args
+        break
+    except Exception:
+        continue
+
+if call_args is None:
+    print(json.dumps({"found": False}))
+    sys.exit(0)
 
 with open(impl_path) as f:
     impl_source = f.read()
@@ -128,7 +143,7 @@ export async function checkConstantMutantGeneric(opts: {
       mutantSurvived: null,
       constantUsed: undefined,
       reason:
-        "no literal-argument call to the target function was found in the test file; cannot generate a constant mutant",
+        "no usable literal-argument call to the target function was found in the test file (none present, or every candidate call raises); cannot generate a constant mutant",
     };
   }
 

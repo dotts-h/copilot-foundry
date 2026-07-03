@@ -239,6 +239,94 @@ describe("runVerifyLadder", () => {
     );
   });
 
+  it("fails full-suite when a baseline-passing test is missing from the final scan (deleted test)", async () => {
+    dir = mkdtempSync(join(tmpdir(), "verify-ladder-"));
+    writeFileSync(join(dir, "test_kept.py"), "def test_kept():\n    assert True\n");
+    writeFileSync(join(dir, "test_touched.py"), "def test_touched():\n    assert True\n");
+
+    const repoMap: RepoMap = {
+      files: ["test_kept.py", "test_touched.py"],
+      testFiles: ["test_kept.py", "test_touched.py"],
+      imports: {},
+      symbols: {},
+    };
+    const scopeReport: ScopeReport = { inScope: ["test_touched.py"], reason: "test" };
+
+    const stubRunner: TargetRunner = {
+      ...runner,
+      async runTestsVerbose(_workDir) {
+        // test_kept.py::test_gone was passing at baseline but no longer exists — and
+        // produces no failure, which is exactly why presence must be checked.
+        return {
+          exitCode: 0,
+          tests: [
+            { nodeId: "test_kept.py::test_kept", outcome: "passed" },
+            { nodeId: "test_touched.py::test_touched", outcome: "passed" },
+          ],
+        };
+      },
+    };
+
+    const result = await runVerifyLadder({
+      runner: stubRunner,
+      targetDir: dir,
+      touchedTestPaths: ["test_touched.py"],
+      newTestPaths: ["test_touched.py"],
+      repoMap,
+      scopeReport,
+      baseline: allPassingBaseline([
+        "test_kept.py::test_kept",
+        "test_kept.py::test_gone",
+        "test_touched.py::test_touched",
+      ]),
+    });
+
+    expect(result.passed).toBe(false);
+    expect(result.failedLevel).toBe("full-suite");
+    expect(result.levels.find((l) => l.level === "full-suite")?.raw).toBe(
+      "baseline tests missing from final suite: test_kept.py::test_gone",
+    );
+  });
+
+  it("passes full-suite when extra new tests are present beyond baseline", async () => {
+    dir = mkdtempSync(join(tmpdir(), "verify-ladder-"));
+    writeFileSync(join(dir, "test_kept.py"), "def test_kept():\n    assert True\n");
+
+    const repoMap: RepoMap = {
+      files: ["test_kept.py"],
+      testFiles: ["test_kept.py"],
+      imports: {},
+      symbols: {},
+    };
+    const scopeReport: ScopeReport = { inScope: ["test_kept.py"], reason: "test" };
+
+    const stubRunner: TargetRunner = {
+      ...runner,
+      async runTestsVerbose(_workDir) {
+        return {
+          exitCode: 0,
+          tests: [
+            { nodeId: "test_kept.py::test_kept", outcome: "passed" },
+            { nodeId: "test_kept.py::test_brand_new", outcome: "passed" },
+          ],
+        };
+      },
+    };
+
+    const result = await runVerifyLadder({
+      runner: stubRunner,
+      targetDir: dir,
+      touchedTestPaths: ["test_kept.py"],
+      newTestPaths: ["test_kept.py"],
+      repoMap,
+      scopeReport,
+      baseline: allPassingBaseline(["test_kept.py::test_kept"]),
+    });
+
+    expect(result.passed).toBe(true);
+    expect(result.levels.find((l) => l.level === "full-suite")?.passed).toBe(true);
+  });
+
   it("fails full-suite when the verbose run produces no parseable results", async () => {
     dir = mkdtempSync(join(tmpdir(), "verify-ladder-"));
     writeFileSync(join(dir, "test_a.py"), "def test_a():\n    assert True\n");

@@ -138,6 +138,54 @@ describe("checkConstantMutantGeneric", () => {
     expect(result.reason.length).toBeGreaterThan(0);
     expect(result.mutantSurvived).toBeNull();
   });
+
+  it("reports not_applicable (not error) when the only literal-arg call raises", async () => {
+    dir = mkdtempSync(join(tmpdir(), "mutation-gate-"));
+    writeFileSync(
+      join(dir, "parse_kata.py"),
+      'def parse(s):\n    if s == "bad":\n        raise ValueError("invalid")\n    return len(s)\n',
+    );
+    writeFileSync(
+      join(dir, "test_parse_kata.py"),
+      "import pytest\nfrom parse_kata import parse\n\ndef test_parse_invalid():\n    with pytest.raises(ValueError):\n        parse(\"bad\")\n",
+    );
+
+    const result = await checkConstantMutantGeneric({
+      workDir: dir,
+      venvDir: FIXTURE_VENV,
+      implRelPath: "parse_kata.py",
+      functionName: "parse",
+      testRelPath: "test_parse_kata.py",
+    });
+
+    expect(result.outcome).toBe("not_applicable");
+    expect(result.mutantSurvived).toBeNull();
+  });
+
+  it("skips a raising candidate call and seeds the mutant from a later succeeding one", async () => {
+    dir = mkdtempSync(join(tmpdir(), "mutation-gate-"));
+    writeFileSync(
+      join(dir, "parse_kata.py"),
+      'def parse(s):\n    if s == "bad":\n        raise ValueError("invalid")\n    return len(s)\n',
+    );
+    writeFileSync(
+      join(dir, "test_parse_kata.py"),
+      "import pytest\nfrom parse_kata import parse\n\ndef test_parse_invalid():\n    with pytest.raises(ValueError):\n        parse(\"bad\")\n\ndef test_parse_ok():\n    assert parse(\"abc\") == 3\n    assert parse(\"zz\") == 2\n",
+    );
+
+    const result = await checkConstantMutantGeneric({
+      workDir: dir,
+      venvDir: FIXTURE_VENV,
+      implRelPath: "parse_kata.py",
+      functionName: "parse",
+      testRelPath: "test_parse_kata.py",
+    });
+
+    expect(result.outcome).toBe("applied");
+    expect(result.constantUsed).toBe(3);
+    // Two differently-valued assertions kill the constant mutant.
+    expect(result.mutantSurvived).toBe(false);
+  });
 });
 
 describe("computeMutationScore", () => {
