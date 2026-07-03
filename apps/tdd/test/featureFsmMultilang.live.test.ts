@@ -32,9 +32,15 @@ function assertAcceptedLedger(ledger: Awaited<ReturnType<typeof runFeature>>): v
   expect(ledger.verifyResult?.passed).toBe(true);
   expect(ledger.acceptanceLedger?.overallAccepted).toBe(true);
   for (const sliceResult of ledger.sliceResults) {
-    // js/go runners have no "constant" operator (it requires executing the target
-    // function); the parity bar is: every APPLIED operator was killed.
-    expect(sliceResult.mutationScore?.results.find((r) => r.operator === "constant")).toBeUndefined();
+    // All runners emit a "constant" operator (static literal extraction). Parity bar:
+    // the entry must exist; applied mutants must be killed; not_applicable is OK when
+    // no literal was found; error is a gate failure.
+    const constantMutant = sliceResult.mutationScore?.results.find((r) => r.operator === "constant");
+    expect(constantMutant).toBeDefined();
+    expect(constantMutant?.outcome).not.toBe("error");
+    if (constantMutant?.outcome === "applied") {
+      expect(constantMutant.survived).toBe(false);
+    }
     expect(sliceResult.mutationScore?.score).toBe(1);
   }
   expect(ledger.writebackResult?.committed).toBe(false);
