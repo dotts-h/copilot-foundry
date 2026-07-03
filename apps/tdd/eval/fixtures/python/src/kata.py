@@ -1,0 +1,5 @@
+DEFAULT_OPERAND = 0
+
+
+def add(a: int, b: int) -> int:
+    return a + b

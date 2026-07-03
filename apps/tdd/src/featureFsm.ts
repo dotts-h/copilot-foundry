@@ -154,6 +154,7 @@ function buildRedPrompt(slice: PlannedSlice, repoMap: RepoMap, runner: TargetRun
       "example) so the test actually triangulates the behavior and cannot be satisfied by a function that " +
       "always returns a single constant. " +
       runner.redPromptRules +
+      (process.env.HELM_TDD_RED_EXTRA ? " " + process.env.HELM_TDD_RED_EXTRA : "") +
       "Do NOT implement or modify the implementation file. Do not create or modify any other file.",
   ];
 
