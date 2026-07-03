@@ -3,8 +3,10 @@ import { join } from "node:path";
 import { runCommand } from "../exec.js";
 import { createPythonRunner } from "../runner/pythonRunner.js";
 
+export type MutationOutcome = "applied" | "not_applicable" | "error";
+
 export interface MutationResult {
-  attempted: boolean;
+  outcome: MutationOutcome;
   mutantSurvived: boolean | null;
   constantUsed: unknown;
   reason: string;
@@ -19,14 +21,13 @@ with open(test_path) as f:
     test_source = f.read()
 test_tree = ast.parse(test_source)
 
-call_args = None
+candidates = []
 for node in ast.walk(test_tree):
     if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == function_name:
         if node.args and all(isinstance(a, ast.Constant) for a in node.args) and not node.keywords:
-            call_args = [a.value for a in node.args]
-            break
+            candidates.append([a.value for a in node.args])
 
-if call_args is None:
+if not candidates:
     print(json.dumps({"found": False}))
     sys.exit(0)
 
@@ -34,7 +35,23 @@ spec = importlib.util.spec_from_file_location("_target_module", impl_path)
 module = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(module)
 target_fn = getattr(module, function_name)
-result = target_fn(*call_args)
+
+# A candidate call that raises (e.g. the error-path input asserted via pytest.raises)
+# cannot seed a constant mutant; that is a property of the test's inputs, not a tooling
+# failure -- skip it and try the next candidate.
+call_args = None
+result = None
+for args in candidates:
+    try:
+        result = target_fn(*args)
+        call_args = args
+        break
+    except Exception:
+        continue
+
+if call_args is None:
+    print(json.dumps({"found": False}))
+    sys.exit(0)
 
 with open(impl_path) as f:
     impl_source = f.read()
@@ -72,15 +89,26 @@ export async function checkConstantMutantGeneric(opts: {
   const implPath = join(opts.workDir, opts.implRelPath);
   const testPath = join(opts.workDir, opts.testRelPath);
 
-  const inspectResult = await runCommand(
-    pythonBin,
-    ["-c", INSPECT_AND_MUTATE_SCRIPT, implPath, opts.functionName, testPath],
-    { cwd: opts.workDir, env: { PYTHONDONTWRITEBYTECODE: "1" }, timeoutMs: 15_000 },
-  );
+  let inspectResult;
+  try {
+    inspectResult = await runCommand(
+      pythonBin,
+      ["-c", INSPECT_AND_MUTATE_SCRIPT, implPath, opts.functionName, testPath],
+      { cwd: opts.workDir, env: { PYTHONDONTWRITEBYTECODE: "1" }, timeoutMs: 15_000 },
+    );
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return {
+      outcome: "error",
+      mutantSurvived: null,
+      constantUsed: undefined,
+      reason: `mutation inspection failed: ${message}`,
+    };
+  }
 
   if (inspectResult.exitCode !== 0) {
     return {
-      attempted: false,
+      outcome: "error",
       mutantSurvived: null,
       constantUsed: undefined,
       reason: `mutation inspection failed (exit ${inspectResult.exitCode}): ${inspectResult.stderr}`,
@@ -102,7 +130,7 @@ export async function checkConstantMutantGeneric(opts: {
 
   if (!parsed) {
     return {
-      attempted: false,
+      outcome: "error",
       mutantSurvived: null,
       constantUsed: undefined,
       reason: `mutation inspection failed: no JSON result line found in python output.\nstdout:\n${inspectResult.stdout}\nstderr:\n${inspectResult.stderr}`,
@@ -111,11 +139,11 @@ export async function checkConstantMutantGeneric(opts: {
 
   if (!parsed.found) {
     return {
-      attempted: false,
+      outcome: "not_applicable",
       mutantSurvived: null,
       constantUsed: undefined,
       reason:
-        "no literal-argument call to the target function was found in the test file; cannot generate a constant mutant",
+        "no usable literal-argument call to the target function was found in the test file (none present, or every candidate call raises); cannot generate a constant mutant",
     };
   }
 
@@ -127,7 +155,7 @@ export async function checkConstantMutantGeneric(opts: {
     const pytestResult = await runner.runTests(opts.workDir, opts.testRelPath);
     const mutantSurvived = runner.classifyRun(pytestResult) === "passed";
     return {
-      attempted: true,
+      outcome: "applied",
       mutantSurvived,
       constantUsed: parsed.constant,
       reason: mutantSurvived
@@ -143,8 +171,9 @@ export type MutationOperator = "constant" | "arithmetic-swap" | "comparison-swap
 
 export interface OperatorMutationResult {
   operator: MutationOperator;
-  applied: boolean;
+  outcome: MutationOutcome;
   survived: boolean | null;
+  reason?: string;
 }
 
 export interface MutationScoreResult {
@@ -220,19 +249,41 @@ async function applyOperatorMutation(opts: {
   const pythonBin = join(opts.venvDir, "bin", "python3");
   const implPath = join(opts.workDir, opts.implRelPath);
 
-  const applyResult = await runCommand(
-    pythonBin,
-    ["-c", APPLY_OPERATOR_SCRIPT, implPath, opts.functionName, opts.operator],
-    { cwd: opts.workDir, timeoutMs: 15_000 },
-  );
-
-  if (applyResult.exitCode !== 0) {
-    return { operator: opts.operator, applied: false, survived: null };
+  let applyResult;
+  try {
+    applyResult = await runCommand(
+      pythonBin,
+      ["-c", APPLY_OPERATOR_SCRIPT, implPath, opts.functionName, opts.operator],
+      { cwd: opts.workDir, timeoutMs: 15_000 },
+    );
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return { operator: opts.operator, outcome: "error", survived: null, reason: message };
   }
 
-  const parsed = JSON.parse(applyResult.stdout) as { applicable: boolean; mutatedSource?: string };
+  if (applyResult.exitCode !== 0) {
+    return {
+      operator: opts.operator,
+      outcome: "error",
+      survived: null,
+      reason: `operator mutation script failed (exit ${applyResult.exitCode}): ${applyResult.stderr}`,
+    };
+  }
+
+  let parsed: { applicable: boolean; mutatedSource?: string };
+  try {
+    parsed = JSON.parse(applyResult.stdout) as { applicable: boolean; mutatedSource?: string };
+  } catch {
+    return {
+      operator: opts.operator,
+      outcome: "error",
+      survived: null,
+      reason: `operator mutation script returned invalid JSON: ${applyResult.stdout}`,
+    };
+  }
+
   if (!parsed.applicable || parsed.mutatedSource === undefined) {
-    return { operator: opts.operator, applied: false, survived: null };
+    return { operator: opts.operator, outcome: "not_applicable", survived: null };
   }
 
   const originalSource = await readFile(implPath, "utf8");
@@ -240,7 +291,11 @@ async function applyOperatorMutation(opts: {
     await writeFile(implPath, parsed.mutatedSource);
     const runner = createPythonRunner(opts.venvDir);
     const pytestResult = await runner.runTests(opts.workDir, opts.testRelPath);
-    return { operator: opts.operator, applied: true, survived: runner.classifyRun(pytestResult) === "passed" };
+    return {
+      operator: opts.operator,
+      outcome: "applied",
+      survived: runner.classifyRun(pytestResult) === "passed",
+    };
   } finally {
     await writeFile(implPath, originalSource);
   }
@@ -255,7 +310,12 @@ export async function computeMutationScore(opts: {
 }): Promise<MutationScoreResult> {
   const constant = await checkConstantMutantGeneric(opts);
   const results: OperatorMutationResult[] = [
-    { operator: "constant", applied: constant.attempted, survived: constant.mutantSurvived },
+    {
+      operator: "constant",
+      outcome: constant.outcome,
+      survived: constant.mutantSurvived,
+      ...(constant.outcome === "error" ? { reason: constant.reason } : {}),
+    },
   ];
 
   const operators: Array<Exclude<MutationOperator, "constant">> = [
@@ -268,7 +328,7 @@ export async function computeMutationScore(opts: {
     results.push(result);
   }
 
-  const attempted = results.filter((r) => r.applied);
+  const attempted = results.filter((r) => r.outcome === "applied");
   const killed = attempted.filter((r) => r.survived === false);
   const survived = attempted.filter((r) => r.survived === true);
 

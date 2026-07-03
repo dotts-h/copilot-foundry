@@ -1,0 +1,12 @@
+{
+  "name": "eval-kata-js",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "typescript": "^5",
+    "vitest": "^4"
+  }
+}

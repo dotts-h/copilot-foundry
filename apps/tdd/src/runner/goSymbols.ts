@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { runCommand } from "../exec.js";
 import type { FileSymbols } from "../phases/map.js";
+import type { FunctionSpan } from "./types.js";
 
 const GO_SYMBOL_EXTRACTOR = String.raw`//go:build ignore
 
@@ -273,6 +274,94 @@ func main() {
 	_ = enc.Encode(output)
 }
 `;
+
+const GO_FUNCTION_SPANS_EXTRACTOR = String.raw`//go:build ignore
+
+package main
+
+import (
+	"encoding/json"
+	"go/ast"
+	"go/parser"
+	"go/token"
+	"os"
+)
+
+type Span struct {
+	Name      string ` + "`json:\"name\"`" + `
+	StartLine int    ` + "`json:\"startLine\"`" + `
+	EndLine   int    ` + "`json:\"endLine\"`" + `
+}
+
+func programArgs() []string {
+	args := os.Args[1:]
+	if len(args) > 0 && args[0] == "--" {
+		return args[1:]
+	}
+	return args
+}
+
+func main() {
+	args := programArgs()
+	if len(args) < 1 {
+		os.Exit(1)
+	}
+	path := args[0]
+	source, err := os.ReadFile(path)
+	if err != nil {
+		os.Exit(1)
+	}
+	fset := token.NewFileSet()
+	file, err := parser.ParseFile(fset, path, source, parser.ParseComments)
+	if err != nil {
+		os.Exit(1)
+	}
+	spans := []Span{}
+	for _, decl := range file.Decls {
+		fn, ok := decl.(*ast.FuncDecl)
+		if !ok {
+			continue
+		}
+		spans = append(spans, Span{
+			Name:      fn.Name.Name,
+			StartLine: fset.Position(fn.Pos()).Line,
+			EndLine:   fset.Position(fn.End()).Line,
+		})
+	}
+	enc := json.NewEncoder(os.Stdout)
+	enc.SetEscapeHTML(false)
+	_ = enc.Encode(spans)
+}
+`;
+
+export async function extractGoFunctionSpans(filePath: string): Promise<FunctionSpan[]> {
+  const scriptPath = join(tmpdir(), `tdd-spans-extract-${randomBytes(8).toString("hex")}.go`);
+  try {
+    await writeFile(scriptPath, GO_FUNCTION_SPANS_EXTRACTOR, "utf8");
+    const result = await runCommand("go", ["run", scriptPath, "--", filePath], {
+      timeoutMs: 30_000,
+    });
+    if (result.exitCode !== 0) return [];
+    try {
+      const parsed: unknown = JSON.parse(result.stdout.trim());
+      if (!Array.isArray(parsed)) return [];
+      return parsed.filter(
+        (entry): entry is FunctionSpan =>
+          typeof entry === "object" &&
+          entry !== null &&
+          typeof (entry as FunctionSpan).name === "string" &&
+          typeof (entry as FunctionSpan).startLine === "number" &&
+          typeof (entry as FunctionSpan).endLine === "number",
+      );
+    } catch {
+      return [];
+    }
+  } catch {
+    return [];
+  } finally {
+    await unlink(scriptPath).catch(() => {});
+  }
+}
 
 export async function extractGoSymbols(targetDir: string, files: string[]): Promise<Record<string, FileSymbols>> {
   if (files.length === 0) return {};

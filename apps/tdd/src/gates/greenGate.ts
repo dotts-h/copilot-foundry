@@ -1,5 +1,5 @@
 import { checkDiffGuard, revertPaths } from "./diffGuard.js";
-import type { Backend } from "../backend/types.js";
+import type { Backend, PhaseTelemetry } from "../backend/types.js";
 import type { TargetRunner } from "../runner/types.js";
 
 export interface GreenGateOptions {
@@ -20,14 +20,21 @@ export interface GreenGateResult {
   diffGuardViolated: boolean;
   diffGuardOffendingPaths: string[];
   failureHistory: string[];
+  attempts: Array<{ telemetry: PhaseTelemetry; rawTestOutput: string }>;
 }
 
 async function attempt(
   opts: GreenGateOptions,
   model: string,
   lastFailure: string | undefined,
-): Promise<{ passed: boolean; diffGuardViolated: boolean; diffGuardOffendingPaths: string[]; rawOutput: string }> {
-  await opts.backend.runPhase({
+): Promise<{
+  passed: boolean;
+  diffGuardViolated: boolean;
+  diffGuardOffendingPaths: string[];
+  rawOutput: string;
+  telemetry: PhaseTelemetry;
+}> {
+  const phase = await opts.backend.runPhase({
     cwd: opts.targetDir,
     model,
     prompt: opts.buildPrompt(lastFailure),
@@ -45,17 +52,20 @@ async function attempt(
     diffGuardViolated: guard.violated,
     diffGuardOffendingPaths: guard.offendingPaths,
     rawOutput: pytestResult.raw,
+    telemetry: phase.telemetry,
   };
 }
 
 export async function runGreenWithRepair(opts: GreenGateOptions): Promise<GreenGateResult> {
   const failureHistory: string[] = [];
+  const attempts: Array<{ telemetry: PhaseTelemetry; rawTestOutput: string }> = [];
   let diffGuardViolated = false;
   let diffGuardOffendingPaths: string[] = [];
   let lastFailure: string | undefined;
 
   for (let iteration = 1; iteration <= opts.maxIterations; iteration++) {
     const result = await attempt(opts, opts.greenModel, lastFailure);
+    attempts.push({ telemetry: result.telemetry, rawTestOutput: result.rawOutput });
     diffGuardViolated ||= result.diffGuardViolated;
     if (result.diffGuardViolated) diffGuardOffendingPaths = result.diffGuardOffendingPaths;
 
@@ -67,6 +77,7 @@ export async function runGreenWithRepair(opts: GreenGateOptions): Promise<GreenG
         diffGuardViolated,
         diffGuardOffendingPaths,
         failureHistory,
+        attempts,
       };
     }
 
@@ -75,6 +86,7 @@ export async function runGreenWithRepair(opts: GreenGateOptions): Promise<GreenG
   }
 
   const escalationResult = await attempt(opts, opts.escalationModel, lastFailure);
+  attempts.push({ telemetry: escalationResult.telemetry, rawTestOutput: escalationResult.rawOutput });
   diffGuardViolated ||= escalationResult.diffGuardViolated;
   if (escalationResult.diffGuardViolated) diffGuardOffendingPaths = escalationResult.diffGuardOffendingPaths;
 
@@ -86,6 +98,7 @@ export async function runGreenWithRepair(opts: GreenGateOptions): Promise<GreenG
       diffGuardViolated,
       diffGuardOffendingPaths,
       failureHistory,
+      attempts,
     };
   }
 
@@ -97,5 +110,6 @@ export async function runGreenWithRepair(opts: GreenGateOptions): Promise<GreenG
     diffGuardViolated,
     diffGuardOffendingPaths,
     failureHistory,
+    attempts,
   };
 }

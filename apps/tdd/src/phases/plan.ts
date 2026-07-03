@@ -1,4 +1,4 @@
-import type { Backend } from "../backend/types.js";
+import type { Backend, PhaseTelemetry } from "../backend/types.js";
 import type { RepoMap } from "./map.js";
 import type { ScopeReport } from "./scope.js";
 import { PLAN_SYMBOLS_CAP, renderSymbols } from "./symbolRender.js";
@@ -71,7 +71,7 @@ function isPlannedSlice(value: unknown): value is PlannedSlice {
   );
 }
 
-export async function planSlices(opts: PlanSlicesOptions): Promise<PlannedSlice[]> {
+export async function planSlices(opts: PlanSlicesOptions): Promise<{ slices: PlannedSlice[]; telemetry: PhaseTelemetry | null }> {
   const result = await opts.backend.runPhase({
     cwd: opts.targetDir,
     model: opts.model,
@@ -95,5 +95,5 @@ export async function planSlices(opts: PlanSlicesOptions): Promise<PlannedSlice[
     throw new Error(`planSlices: some planned slices were missing required fields: ${jsonText}`);
   }
 
-  return slices;
+  return { slices, telemetry: result.telemetry };
 }

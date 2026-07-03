@@ -1,8 +1,8 @@
 import { writeArtifact } from "./artifacts/vault.js";
-import type { Backend } from "./backend/types.js";
+import type { Backend, PhaseTelemetry } from "./backend/types.js";
 import { runCommand } from "./exec.js";
-import { attemptRefactor } from "./gates/refactorGate.js";
-import { classifyRedOutcome, type RedOutcome } from "./gates/redGate.js";
+import { attemptRefactor, type RefactorScopeViolation } from "./gates/refactorGate.js";
+import { classifyRedOutcome, type RedGateResult, type RedOutcome } from "./gates/redGate.js";
 import { runGreenWithRepair } from "./gates/greenGate.js";
 import type { RedLintResult } from "./gates/redLinter.js";
 import type { MutationScoreResult } from "./gates/mutationGate.js";
@@ -22,6 +22,12 @@ import type { TargetRunner } from "./runner/types.js";
 import { soundPaths } from "./soundPaths.js";
 import { validateFeatureRunSpec, type FeatureRunSpec } from "./types.js";
 
+export interface SlicePhaseTelemetry {
+  red: PhaseTelemetry | null;
+  green: PhaseTelemetry[];
+  refactor: PhaseTelemetry | null;
+}
+
 export interface SliceExecutionResult {
   slice: PlannedSlice;
   redOutcome: RedOutcome;
@@ -32,13 +38,16 @@ export interface SliceExecutionResult {
   greenEscalated: boolean;
   diffGuardViolated: boolean;
   refactorApplied: boolean;
+  refactorScopeViolation: RefactorScopeViolation | null;
   mutationScore: MutationScoreResult | null;
+  phaseTelemetry: SlicePhaseTelemetry;
 }
 
 export type FeatureRunStatus =
   | "accepted"
   | "verify_failed"
   | "mutation_gate_failed"
+  | "mutation_gate_error"
   | "completed_with_regressions"
   | "plan_only"
   | "red_gate_failed"
@@ -58,6 +67,9 @@ export interface FeatureLedger {
   status: FeatureRunStatus;
   completedAt: string;
   workspace: { branchName: string; baseCommit: string };
+  planTelemetry: PhaseTelemetry | null;
+  totalCostUsd: number | null;
+  totalDenials: number;
 }
 
 function summarizeBaseline(baseline: BaselineReport): { total: number; passed: number; failed: number } {
@@ -66,6 +78,60 @@ function summarizeBaseline(baseline: BaselineReport): { total: number; passed: n
     passed: baseline.tests.filter((t) => t.outcome === "passed").length,
     failed: baseline.tests.filter((t) => t.outcome === "failed" || t.outcome === "error").length,
   };
+}
+
+function collectPhaseTelemetry(telemetry: PhaseTelemetry | null | undefined): PhaseTelemetry[] {
+  return telemetry ? [telemetry] : [];
+}
+
+function computeTotalCostUsd(
+  planTelemetry: PhaseTelemetry | null,
+  sliceResults: SliceExecutionResult[],
+): number | null {
+  const all: PhaseTelemetry[] = [...collectPhaseTelemetry(planTelemetry)];
+  for (const slice of sliceResults) {
+    all.push(...collectPhaseTelemetry(slice.phaseTelemetry.red));
+    all.push(...slice.phaseTelemetry.green);
+    all.push(...collectPhaseTelemetry(slice.phaseTelemetry.refactor));
+  }
+  let sum = 0;
+  let anyCost = false;
+  for (const t of all) {
+    if (t.costUsd !== undefined) {
+      sum += t.costUsd;
+      anyCost = true;
+    }
+  }
+  return anyCost ? sum : null;
+}
+
+function computeTotalDenials(planTelemetry: PhaseTelemetry | null, sliceResults: SliceExecutionResult[]): number {
+  const all: PhaseTelemetry[] = [...collectPhaseTelemetry(planTelemetry)];
+  for (const slice of sliceResults) {
+    all.push(...collectPhaseTelemetry(slice.phaseTelemetry.red));
+    all.push(...slice.phaseTelemetry.green);
+    all.push(...collectPhaseTelemetry(slice.phaseTelemetry.refactor));
+  }
+  return all.reduce((acc, t) => acc + t.denials.length, 0);
+}
+
+async function writeSliceGateArtifacts(
+  artifactRoot: string,
+  runId: string,
+  sliceIndex: number,
+  redResult: RedGateResult,
+  greenAttempts: Array<{ rawTestOutput: string }>,
+): Promise<void> {
+  await writeArtifact(artifactRoot, runId, `slice-${sliceIndex}-red-output`, {
+    firstRun: redResult.rawRuns[0] ?? "",
+    secondRun: redResult.rawRuns[1] ?? "",
+  });
+  await writeArtifact(
+    artifactRoot,
+    runId,
+    `slice-${sliceIndex}-green-attempts`,
+    greenAttempts.map((a, n) => ({ attempt: n + 1, rawTestOutput: a.rawTestOutput })),
+  );
 }
 
 function targetExistsInImpl(symbols: FileSymbols, functionName: string): boolean {
@@ -88,6 +154,7 @@ function buildRedPrompt(slice: PlannedSlice, repoMap: RepoMap, runner: TargetRun
       "example) so the test actually triangulates the behavior and cannot be satisfied by a function that " +
       "always returns a single constant. " +
       runner.redPromptRules +
+      (process.env.HELM_TDD_RED_EXTRA ? " " + process.env.HELM_TDD_RED_EXTRA : "") +
       "Do NOT implement or modify the implementation file. Do not create or modify any other file.",
   ];
 
@@ -144,7 +211,9 @@ function buildRefactorPrompt(slice: PlannedSlice): string {
   return (
     `The test at ${slice.testRelPath} is currently passing against ${slice.implRelPath}. Mechanically ` +
     "clean up the implementation (naming, redundant code, obvious simplifications) WITHOUT changing " +
-    `its behavior. Do NOT modify ${slice.testRelPath} under any circumstances -- it is locked and any ` +
+    `its behavior. Confine your changes to ${slice.functionName} and any new helper functions you extract ` +
+    "from it -- edits elsewhere in the file will be reverted. " +
+    `Do NOT modify ${slice.testRelPath} under any circumstances -- it is locked and any ` +
     "attempt to edit it will be reverted."
   );
 }
@@ -242,7 +311,7 @@ export async function runFeature(
     await writeArtifact(artifactRoot, runId, "scope", scopeReport);
 
     await markProgress(artifactRoot, runId, startedAt, "plan", workspace.branchName);
-    const slices = await planSlices({
+    const { slices, telemetry: planTelemetry } = await planSlices({
       backend,
       model: spec.models.plan,
       targetDir: workDir,
@@ -274,6 +343,9 @@ export async function runFeature(
         status,
         completedAt: new Date().toISOString(),
         workspace: { branchName: workspace.branchName, baseCommit: workspace.baseCommit },
+        planTelemetry,
+        totalCostUsd: computeTotalCostUsd(planTelemetry, sliceResults),
+        totalDenials: computeTotalDenials(planTelemetry, sliceResults),
       };
       await writeArtifact(artifactRoot, runId, "featureLedger", ledger);
       await writeRunState(artifactRoot, runId, {
@@ -302,7 +374,7 @@ export async function runFeature(
 
       const sliceStartCommit = await currentHead(workDir);
 
-      await backend.runPhase({
+      const redPhase = await backend.runPhase({
         cwd: workDir,
         model: spec.models.red,
         prompt: buildRedPrompt(slice, repoMap, runner),
@@ -329,8 +401,11 @@ export async function runFeature(
           greenEscalated: false,
           diffGuardViolated: false,
           refactorApplied: false,
+          refactorScopeViolation: null,
           mutationScore: null,
+          phaseTelemetry: { red: redPhase.telemetry, green: [], refactor: null },
         });
+        await writeSliceGateArtifacts(artifactRoot, runId, i, redResult, []);
         return await finish("red_gate_failed", sliceResults, null, null, null);
       }
 
@@ -357,8 +432,15 @@ export async function runFeature(
           greenEscalated: greenResult.escalated,
           diffGuardViolated: greenResult.diffGuardViolated,
           refactorApplied: false,
+          refactorScopeViolation: null,
           mutationScore: null,
+          phaseTelemetry: {
+            red: redPhase.telemetry,
+            green: greenResult.attempts.map((a) => a.telemetry),
+            refactor: null,
+          },
         });
+        await writeSliceGateArtifacts(artifactRoot, runId, i, redResult, greenResult.attempts);
         return await finish("green_gate_exhausted", sliceResults, null, null, null);
       }
 
@@ -371,9 +453,17 @@ export async function runFeature(
         venvDir: spec.venvDir,
         implRelPath: slice.implRelPath,
         testRelPath: slice.testRelPath,
+        functionName: slice.functionName,
         refactorModel: spec.models.green,
         buildPrompt: () => buildRefactorPrompt(slice),
       });
+
+      if (refactorResult.scopeViolation) {
+        await writeArtifact(artifactRoot, runId, `slice-${i}-refactor-scope`, {
+          offendingHunks: refactorResult.scopeViolation.offendingHunks,
+          allowed: refactorResult.scopeAllowed ?? [],
+        });
+      }
 
       if (refactorResult.applied) {
         await commitAll(workDir, `refactor: ${runId} slice ${i}`);
@@ -389,8 +479,14 @@ export async function runFeature(
         testRelPath: slice.testRelPath,
       });
 
+      const slicePhaseTelemetry: SlicePhaseTelemetry = {
+        red: redPhase.telemetry,
+        green: greenResult.attempts.map((a) => a.telemetry),
+        refactor: refactorResult.telemetry,
+      };
+
       const constantMutant = mutationScore.results.find((r) => r.operator === "constant");
-      if (constantMutant?.applied && constantMutant.survived === true) {
+      if (constantMutant?.outcome === "error") {
         sliceResults.push({
           slice,
           redOutcome: redResult.outcome,
@@ -401,8 +497,29 @@ export async function runFeature(
           greenEscalated: greenResult.escalated,
           diffGuardViolated: greenResult.diffGuardViolated,
           refactorApplied: refactorResult.applied,
+          refactorScopeViolation: refactorResult.scopeViolation,
           mutationScore,
+          phaseTelemetry: slicePhaseTelemetry,
         });
+        await writeSliceGateArtifacts(artifactRoot, runId, i, redResult, greenResult.attempts);
+        return await finish("mutation_gate_error", sliceResults, null, null, null);
+      }
+      if (constantMutant?.outcome === "applied" && constantMutant.survived === true) {
+        sliceResults.push({
+          slice,
+          redOutcome: redResult.outcome,
+          redGatePassed: true,
+          redLint: redResult.lint,
+          greenGatePassed: true,
+          greenIterationsUsed: greenResult.iterationsUsed,
+          greenEscalated: greenResult.escalated,
+          diffGuardViolated: greenResult.diffGuardViolated,
+          refactorApplied: refactorResult.applied,
+          refactorScopeViolation: refactorResult.scopeViolation,
+          mutationScore,
+          phaseTelemetry: slicePhaseTelemetry,
+        });
+        await writeSliceGateArtifacts(artifactRoot, runId, i, redResult, greenResult.attempts);
         return await finish("mutation_gate_failed", sliceResults, null, null, null);
       }
 
@@ -416,8 +533,11 @@ export async function runFeature(
         greenEscalated: greenResult.escalated,
         diffGuardViolated: greenResult.diffGuardViolated,
         refactorApplied: refactorResult.applied,
+        refactorScopeViolation: refactorResult.scopeViolation,
         mutationScore,
+        phaseTelemetry: slicePhaseTelemetry,
       });
+      await writeSliceGateArtifacts(artifactRoot, runId, i, redResult, greenResult.attempts);
 
       const postSliceScan = await runner.runTestsVerbose(workDir);
       const postSliceFailingPaths = new Set(

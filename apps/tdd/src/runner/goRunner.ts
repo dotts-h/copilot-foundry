@@ -4,7 +4,7 @@ import type { RedLintResult } from "../gates/redLinter.js";
 import type { BaselineTestResult } from "../phases/baseline.js";
 import { runCommand } from "../exec.js";
 import { computeGoMutationScore } from "./goMutation.js";
-import { extractGoSymbols } from "./goSymbols.js";
+import { extractGoFunctionSpans, extractGoSymbols } from "./goSymbols.js";
 import type { RunClassification, StaticGateResult, TargetRunner, TestRunResult } from "./types.js";
 
 const SINGLE_ASSERTION_TRIANGULATION_WARNING =
@@ -263,12 +263,20 @@ export function createGoRunner(_targetDir: string): TargetRunner {
     isTestFile,
     extractSymbols: extractGoSymbols,
 
-    computeMutationScore(opts) {
-      return computeGoMutationScore(() => runTests(opts.workDir, opts.testRelPath), opts, classifyGoRun);
+    async computeMutationScore(opts) {
+      const testPath = join(opts.workDir, opts.testRelPath);
+      return computeGoMutationScore(
+        () => runTests(opts.workDir, opts.testRelPath),
+        opts,
+        classifyGoRun,
+        testPath,
+      );
     },
 
     runStaticGates,
 
     lintRedTest: lintRedTestGo,
+
+    functionSpans: extractGoFunctionSpans,
   };
 }

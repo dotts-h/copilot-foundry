@@ -28,7 +28,7 @@ describe("planSlices", () => {
       }),
     ]);
 
-    const slices = await planSlices({
+    const { slices } = await planSlices({
       backend,
       model: "fake-plan",
       targetDir: "/tmp/whatever",
@@ -72,7 +72,7 @@ describe("planSlices", () => {
       }),
     ]);
 
-    const slices = await planSlices({
+    const { slices } = await planSlices({
       backend,
       model: "fake-plan",
       targetDir: "/tmp/whatever",

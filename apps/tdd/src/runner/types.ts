@@ -24,6 +24,12 @@ export interface StaticGateResult {
   raw: string;
 }
 
+export interface FunctionSpan {
+  name: string;
+  startLine: number;
+  endLine: number;
+}
+
 export interface TargetRunner {
   readonly language: TargetLanguage;
   /** Human name of the test framework, used in prompts ("pytest", "vitest", "jest", "go test"). */
@@ -59,4 +65,8 @@ export interface TargetRunner {
   runStaticGates(workDir: string): Promise<StaticGateResult[]>;
 
   lintRedTest(testSource: string): RedLintResult;
+
+  /** Top-level functions (and, for python, class methods) with 1-based inclusive line spans.
+   *  Fail-soft: parse failure returns []. */
+  functionSpans(filePath: string): Promise<FunctionSpan[]>;
 }

@@ -1,3 +1,4 @@
+import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { BaselineTestResult } from "../phases/baseline.js";
 import { runCommand } from "../exec.js";
@@ -6,7 +7,7 @@ import { classifyJsRun } from "./jsClassify.js";
 import { detectJsContext, findTsconfig, resolveBin, type JsContext } from "./jsContext.js";
 import type { FileSymbols } from "../phases/map.js";
 import type { MutationOptions, RunClassification, StaticGateResult, TargetRunner, TestRunResult } from "./types.js";
-import { extractJsSymbols } from "./jsSymbols.js";
+import { extractJsFunctionSpans, extractJsSymbols } from "./jsSymbols.js";
 
 const SINGLE_ASSERTION_TRIANGULATION_WARNING =
   "only one assertion found -- a single example does not triangulate; consider a second, differently-valued case";
@@ -33,11 +34,15 @@ export function lintRedTestJs(testSource: string): import("../gates/redLinter.js
   return { blocking, warnings };
 }
 
+// The table-driven sentence won its A/B eval (m7-t5, 2026-07-03): +0.17 mutation score on the
+// feature with headroom, per-case failure reporting, zero negative-set regression.
 export const VITEST_RED_PROMPT_RULES =
-  "Import the target module with a dynamic `await import(...)` INSIDE the async test function — never a top-level static import of a symbol that may not exist yet, so a missing export fails only your test instead of breaking collection of the whole file.";
+  "Import the target module with a dynamic `await import(...)` INSIDE the async test function — never a top-level static import of a symbol that may not exist yet, so a missing export fails only your test instead of breaking collection of the whole file. " +
+  "When the behavior has three or more input cases, write ONE test.each table listing the cases, instead of near-identical separate tests. Assert only on observable behavior (return values, thrown errors), never on internals.";
 
 export const JEST_RED_PROMPT_RULES =
-  "Load the target module with `require(...)` INSIDE the test function — never a top-level import of a symbol that may not exist yet, so a missing export fails only your test.";
+  "Load the target module with `require(...)` INSIDE the test function — never a top-level import of a symbol that may not exist yet, so a missing export fails only your test. " +
+  "When the behavior has three or more input cases, write ONE test.each table listing the cases, instead of near-identical separate tests. Assert only on observable behavior (return values, thrown errors), never on internals.";
 
 export { JEST_HARNESS_ERROR_MARKERS, VITEST_HARNESS_ERROR_MARKERS, classifyJsRun } from "./jsClassify.js";
 
@@ -90,7 +95,10 @@ export function parseVitestVerboseOutput(raw: string): BaselineTestResult[] {
   while ((match = lineRegex.exec(cleaned)) !== null) {
     const marker = match[1];
     const filePath = match[2];
-    const testName = match[3].trim();
+    // Vitest's verbose reporter appends a bare duration ("… 2ms") to slower tests only,
+    // so leaving it in the name makes nodeIds unstable across runs (caught live by the
+    // missing-baseline-test gate: baseline "… 2ms" vs final "… 1ms" = spurious deletion).
+    const testName = match[3].trim().replace(/\s+\d+(?:\.\d+)?m?s$/, "");
     let outcome: BaselineTestResult["outcome"];
     if (marker === "✓" || marker === "√") {
       outcome = "passed";
@@ -351,12 +359,20 @@ export async function createJsRunner(targetDir: string): Promise<TargetRunner> {
     isTestFile,
     extractSymbols,
 
-    computeMutationScore(opts: MutationOptions) {
-      return computeJsMutationScore(() => runTests(opts.workDir, opts.testRelPath), opts, ctx.framework);
+    async computeMutationScore(opts: MutationOptions) {
+      const testSource = await readFile(join(opts.workDir, opts.testRelPath), "utf8");
+      return computeJsMutationScore(
+        () => runTests(opts.workDir, opts.testRelPath),
+        opts,
+        ctx.framework,
+        testSource,
+      );
     },
 
     runStaticGates,
 
     lintRedTest: lintRedTestJs,
+
+    functionSpans: extractJsFunctionSpans,
   };
 }

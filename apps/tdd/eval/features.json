@@ -1,0 +1,26 @@
+{
+  "parse_duration": {
+    "polarity": "positive",
+    "description": {
+      "py": "add parse_duration(s) returning total seconds for strings like '90s', '2m', '1h30m'; invalid input raises/returns an error",
+      "js": "add parseDuration(s) returning total seconds for strings like '90s', '2m', '1h30m'; invalid input throws/returns an error",
+      "go": "add ParseDuration(s) returning total seconds for strings like '90s', '2m', '1h30m'; invalid input returns an error"
+    }
+  },
+  "format_bytes": {
+    "polarity": "positive",
+    "description": {
+      "py": "add format_bytes(n) returning '0 B', '1.0 KiB' for 1024, '1.5 KiB' for 1536, '1.0 MiB' for 1048576; negative input is an error",
+      "js": "add formatBytes(n) returning '0 B', '1.0 KiB' for 1024, '1.5 KiB' for 1536, '1.0 MiB' for 1048576; negative input is an error",
+      "go": "add FormatBytes(n) returning '0 B', '1.0 KiB' for 1024, '1.5 KiB' for 1536, '1.0 MiB' for 1048576; negative input is an error"
+    }
+  },
+  "counter": {
+    "polarity": "negative",
+    "description": {
+      "py": "add a make_counter() whose increment() returns 1, then 2, then 3 on successive calls",
+      "js": "add a makeCounter() whose increment() returns 1, then 2, then 3 on successive calls",
+      "go": "add a MakeCounter() whose Increment() returns 1, then 2, then 3 on successive calls"
+    }
+  }
+}

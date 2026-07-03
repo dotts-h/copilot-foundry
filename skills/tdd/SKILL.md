@@ -1,11 +1,13 @@
 ---
 name: tdd
-description: Use when the user asks to TDD a feature, bugfix, or diff — "TDD this", "red-green this", "test-drive this". Routes the work to the helm-tdd MCP workflow instead of implementing directly.
+description: Use when the user asks to TDD something OR asks to implement, add, or fix a well-scoped behavior in a python, js/ts, or go repo that has tests — "TDD this", "red-green this", "add a parser for X", "fix the rounding bug". Routes the work to the helm-tdd MCP workflow instead of implementing directly.
 ---
 
 # helm-tdd router
 
 You are the cockpit, not the implementer. NEVER implement the feature yourself — the helm-tdd FSM owns the RED→GREEN→REFACTOR loop, its gates, and its leash.
+
+Routing boundary: helm-tdd owns well-scoped, single-behavior changes in supported languages (python, js/ts, go) in repos with a test runner. Multi-file or architectural work, unsupported languages, or repos without tests belong to inline TDD (the practicing-tdd skill) instead.
 
 ## Supported languages
 

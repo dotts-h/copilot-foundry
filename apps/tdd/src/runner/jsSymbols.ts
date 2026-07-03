@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import ts from "typescript";
 import type { FileSymbols } from "../phases/map.js";
+import type { FunctionSpan } from "./types.js";
 
 const JS_SOURCE_EXTENSIONS = new Set([".ts", ".tsx", ".mts", ".cts", ".js", ".mjs", ".cjs", ".jsx"]);
 const UPPER_SNAKE = /^[A-Z][A-Z0-9_]*$/;
@@ -139,6 +140,50 @@ function extractFileSymbols(sourceText: string, fileName: string): FileSymbols |
     return null;
   }
   return { functions, classes, constants };
+}
+
+function extractFunctionSpansFromSource(sourceText: string, fileName: string): FunctionSpan[] {
+  const ext = fileName.slice(fileName.lastIndexOf("."));
+  const parsed = ts.createSourceFile(fileName, sourceText, ts.ScriptTarget.Latest, true, scriptKindForExtension(ext));
+  const parseDiagnostics = (parsed as ts.SourceFile & { parseDiagnostics?: readonly ts.Diagnostic[] }).parseDiagnostics;
+  if (parseDiagnostics && parseDiagnostics.length > 0) {
+    return [];
+  }
+
+  const spans: FunctionSpan[] = [];
+  for (const node of parsed.statements) {
+    if (ts.isFunctionDeclaration(node) && node.name) {
+      spans.push({
+        name: node.name.text,
+        startLine: parsed.getLineAndCharacterOfPosition(node.getStart(parsed)).line + 1,
+        endLine: parsed.getLineAndCharacterOfPosition(node.getEnd()).line + 1,
+      });
+    } else if (ts.isVariableStatement(node)) {
+      for (const decl of node.declarationList.declarations) {
+        if (!ts.isIdentifier(decl.name)) continue;
+        if (
+          decl.initializer &&
+          (ts.isArrowFunction(decl.initializer) || ts.isFunctionExpression(decl.initializer))
+        ) {
+          spans.push({
+            name: decl.name.text,
+            startLine: parsed.getLineAndCharacterOfPosition(node.getStart(parsed)).line + 1,
+            endLine: parsed.getLineAndCharacterOfPosition(node.getEnd()).line + 1,
+          });
+        }
+      }
+    }
+  }
+  return spans;
+}
+
+export async function extractJsFunctionSpans(filePath: string): Promise<FunctionSpan[]> {
+  try {
+    const sourceText = await readFile(filePath, "utf8");
+    return extractFunctionSpansFromSource(sourceText, filePath);
+  } catch {
+    return [];
+  }
 }
 
 export async function extractJsSymbols(targetDir: string, files: string[]): Promise<Record<string, FileSymbols>> {

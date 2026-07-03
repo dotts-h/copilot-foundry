@@ -1,11 +1,22 @@
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { readArtifact } from "../src/artifacts/vault.js";
 import { runCommand } from "../src/exec.js";
 import { runFeature } from "../src/featureFsm.js";
 import { DEFAULT_MODELS_BY_BACKEND, type FeatureRunSpec } from "../src/types.js";
 import { ScriptedBackend, writeImpl } from "./helpers/fakeBackend.js";
+
+vi.mock("../src/gates/mutationGate.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../src/gates/mutationGate.js")>();
+  return {
+    ...actual,
+    computeMutationScore: vi.fn((opts: Parameters<typeof actual.computeMutationScore>[0]) =>
+      actual.computeMutationScore(opts),
+    ),
+  };
+});
 
 const FIXTURE_VENV = join(process.cwd(), "fixtures", "add-kata", ".venv");
 
@@ -91,6 +102,16 @@ describe("runFeature", () => {
       false,
     );
     expect(ledger.writebackResult?.committed).toBe(false);
+    expect(ledger.sliceResults[0].phaseTelemetry.green).toHaveLength(1);
+    expect(ledger.totalDenials).toBe(0);
+    expect(ledger.planTelemetry).toBeDefined();
+    const greenAttempts = await readArtifact<Array<{ attempt: number; rawTestOutput: string }>>(
+      artifactRoot,
+      "run-feature-1",
+      "slice-0-green-attempts",
+    );
+    expect(greenAttempts).toHaveLength(1);
+    expect(greenAttempts[0].rawTestOutput.length).toBeGreaterThan(0);
     expect(backend.calls[0].lockedPaths).toBeUndefined(); // plan
     expect(backend.calls[1].lockedPaths).toEqual(["add_kata.py"]); // RED locks impl
     expect(backend.calls[1].prompt).toContain("import it inside the new test function(s) instead");
@@ -98,6 +119,7 @@ describe("runFeature", () => {
     expect(backend.calls[1].prompt).toContain("already exists in add_kata.py");
     expect(backend.calls[2].lockedPaths).toEqual(["test_add_kata.py"]); // GREEN locks test
     expect(backend.calls[2].prompt).toContain("Current symbols in the implementation module");
+    expect(backend.calls[3].prompt).toContain("Confine your changes to add and any new helper functions you extract");
 
     expect(ledger.workspace.branchName).toBe("helm-tdd/run-feature-1");
     const show = await runCommand("git", ["show", "helm-tdd/run-feature-1:add_kata.py"], { cwd: targetDir });
@@ -441,5 +463,47 @@ describe("runFeature", () => {
     expect(
       ledger.sliceResults[0].mutationScore?.results.find((r) => r.operator === "constant")?.survived,
     ).toBe(true);
+  });
+
+  it("reports mutation_gate_error when the constant operator fails with an error outcome", async () => {
+    const { computeMutationScore } = await import("../src/gates/mutationGate.js");
+    vi.mocked(computeMutationScore).mockResolvedValueOnce({
+      results: [{ operator: "constant", outcome: "error", survived: null, reason: "broken python" }],
+      killedCount: 0,
+      survivedCount: 0,
+      attemptedCount: 0,
+      score: 1,
+    });
+
+    targetDir = await seedTargetRepo();
+    artifactRoot = mkdtempSync(join(tmpdir(), "feature-fsm-artifacts-"));
+
+    const backend = new ScriptedBackend([
+      () => ({
+        resultText: JSON.stringify([
+          {
+            description: "add(a, b) returns a + b",
+            implRelPath: "add_kata.py",
+            testRelPath: "test_add_kata.py",
+            functionName: "add",
+          },
+        ]),
+      }),
+      async (opts) => {
+        writeFileSync(
+          join(opts.cwd, "test_add_kata.py"),
+          "from add_kata import add\n\ndef test_add():\n    assert add(2, 3) == 5\n    assert add(0, 0) == 0\n",
+        );
+      },
+      async (opts) => writeImpl(opts.cwd, "add_kata.py", "def add(a, b):\n    return a + b\n"),
+    ]);
+
+    const ledger = await runFeature(baseSpec({ targetDir }), backend, artifactRoot, "run-mutation-gate-error");
+
+    expect(ledger.status).toBe("mutation_gate_error");
+    expect(ledger.sliceResults[0].greenGatePassed).toBe(true);
+    const constant = ledger.sliceResults[0].mutationScore?.results.find((r) => r.operator === "constant");
+    expect(constant?.outcome).toBe("error");
+    expect(constant?.reason).toBe("broken python");
   });
 });

@@ -54,6 +54,8 @@ export class CursorBackend implements Backend {
         success: parsed.is_error !== true,
         resultText: parsed.result ?? "",
         durationMs: parsed.duration_ms ?? 0,
+        // Cursor has no per-call cost meter; omit cost/usage fields.
+        telemetry: { denials: [] },
       };
     } finally {
       if (locked.length > 0) await removeLeashConfig(opts.cwd);
