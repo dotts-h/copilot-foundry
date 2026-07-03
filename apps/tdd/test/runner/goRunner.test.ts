@@ -372,15 +372,22 @@ describe("createGoRunner lintRedTest", () => {
 describe("computeGoMutationScore TS flow", () => {
   let dir: string;
   let mutatorSpy: ReturnType<typeof vi.spyOn>;
+  let extractSpy: ReturnType<typeof vi.spyOn>;
 
   afterEach(() => {
     mutatorSpy?.mockRestore();
+    extractSpy?.mockRestore();
     if (dir) rmSync(dir, { recursive: true, force: true });
   });
+
+  function mockConstantNotApplicable(): void {
+    extractSpy = vi.spyOn(goMutationDeps, "runGoExtractExpected").mockResolvedValue({ found: false });
+  }
 
   it("reports outcome:not_applicable when the operator does not apply", async () => {
     dir = mkdtempSync(join(tmpdir(), "go-mutation-"));
     writeFileSync(join(dir, "math.go"), "package math\n\nfunc Add(a, b int) int {\n\treturn a + b\n}\n");
+    mockConstantNotApplicable();
     mutatorSpy = vi.spyOn(goMutationDeps, "runGoMutator").mockResolvedValue({
       applicable: false,
     });
@@ -391,7 +398,7 @@ describe("computeGoMutationScore TS flow", () => {
       implRelPath: "math.go",
       functionName: "Add",
       testRelPath: "math_test.go",
-    }, classifyGoRun);
+    }, classifyGoRun, join(dir, "math_test.go"));
 
     const comparison = score.results.find((r) => r.operator === "comparison-swap");
     expect(comparison).toEqual({ operator: "comparison-swap", outcome: "not_applicable", survived: null });
@@ -402,6 +409,7 @@ describe("computeGoMutationScore TS flow", () => {
     dir = mkdtempSync(join(tmpdir(), "go-mutation-"));
     const source = "package math\n\nfunc Add(a, b int) int {\n\treturn a + b\n}\n";
     writeFileSync(join(dir, "math.go"), source);
+    mockConstantNotApplicable();
     mutatorSpy = vi.spyOn(goMutationDeps, "runGoMutator").mockImplementation(
       async (_implPath, _name, operator) =>
         operator === "arithmetic-swap"
@@ -416,7 +424,7 @@ describe("computeGoMutationScore TS flow", () => {
         implRelPath: "math.go",
         functionName: "Add",
         testRelPath: "math_test.go",
-      }, classifyGoRun),
+      }, classifyGoRun, join(dir, "math_test.go")),
     ).rejects.toThrow("boom");
 
     expect(readFileSync(join(dir, "math.go"), "utf8")).toBe(source);
@@ -425,6 +433,7 @@ describe("computeGoMutationScore TS flow", () => {
   it("treats harness_error focused runs as outcome:not_applicable", async () => {
     dir = mkdtempSync(join(tmpdir(), "go-mutation-"));
     writeFileSync(join(dir, "math.go"), "package math\n\nfunc Add(a, b int) int {\n\treturn a + b\n}\n");
+    mockConstantNotApplicable();
     mutatorSpy = vi.spyOn(goMutationDeps, "runGoMutator").mockImplementation(
       async (_implPath, _name, operator) =>
         operator === "arithmetic-swap"
@@ -441,7 +450,7 @@ describe("computeGoMutationScore TS flow", () => {
       implRelPath: "math.go",
       functionName: "Add",
       testRelPath: "math_test.go",
-    }, classifyGoRun);
+    }, classifyGoRun, join(dir, "math_test.go"));
 
     const arithmetic = score.results.find((r) => r.operator === "arithmetic-swap");
     expect(arithmetic).toEqual({ operator: "arithmetic-swap", outcome: "not_applicable", survived: null });
@@ -450,6 +459,7 @@ describe("computeGoMutationScore TS flow", () => {
   it("computes score from killed mutants with stubbed focused runs", async () => {
     dir = mkdtempSync(join(tmpdir(), "go-mutation-"));
     writeFileSync(join(dir, "math.go"), "package math\n\nfunc Add(a, b int) int {\n\treturn a + b\n}\n");
+    mockConstantNotApplicable();
     mutatorSpy = vi.spyOn(goMutationDeps, "runGoMutator").mockImplementation(
       async (_implPath, _name, operator) =>
         operator === "arithmetic-swap"
@@ -463,7 +473,7 @@ describe("computeGoMutationScore TS flow", () => {
       implRelPath: "math.go",
       functionName: "Add",
       testRelPath: "math_test.go",
-    }, classifyGoRun);
+    }, classifyGoRun, join(dir, "math_test.go"));
 
     const arithmetic = score.results.find((r) => r.operator === "arithmetic-swap");
     expect(arithmetic?.outcome).toBe("applied");

@@ -263,8 +263,14 @@ export function createGoRunner(_targetDir: string): TargetRunner {
     isTestFile,
     extractSymbols: extractGoSymbols,
 
-    computeMutationScore(opts) {
-      return computeGoMutationScore(() => runTests(opts.workDir, opts.testRelPath), opts, classifyGoRun);
+    async computeMutationScore(opts) {
+      const testPath = join(opts.workDir, opts.testRelPath);
+      return computeGoMutationScore(
+        () => runTests(opts.workDir, opts.testRelPath),
+        opts,
+        classifyGoRun,
+        testPath,
+      );
     },
 
     runStaticGates,
