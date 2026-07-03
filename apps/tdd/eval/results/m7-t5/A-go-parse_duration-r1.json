@@ -1,0 +1,27 @@
+{
+  "arm": "A",
+  "language": "go",
+  "feature": "parse_duration",
+  "rep": 1,
+  "status": "accepted",
+  "perSlice": [
+    {
+      "mutationScore": 1,
+      "redLint": {
+        "blocking": [],
+        "warnings": []
+      },
+      "greenIterationsUsed": 1,
+      "refactorScopeViolation": {
+        "offendingHunks": [
+          "@@ -3,4 +3 @@ package kata",
+          "@@ -9,0 +7,7 @@ const DefaultOperand = 0"
+        ]
+      }
+    }
+  ],
+  "totalCostUsd": null,
+  "durationMs": 64609,
+  "branch": "helm-tdd/eval-A-go-parse_duration-r1-1783064126551",
+  "workspacePath": "/tmp/helm-tdd-eval-MqVzUv"
+}

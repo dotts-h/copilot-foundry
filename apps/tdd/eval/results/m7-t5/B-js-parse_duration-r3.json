@@ -1,0 +1,26 @@
+{
+  "arm": "B",
+  "language": "js",
+  "feature": "parse_duration",
+  "rep": 3,
+  "status": "accepted",
+  "perSlice": [
+    {
+      "mutationScore": 1,
+      "redLint": {
+        "blocking": [],
+        "warnings": []
+      },
+      "greenIterationsUsed": 1,
+      "refactorScopeViolation": {
+        "offendingHunks": [
+          "@@ -6,0 +7,2 @@ export function add(a: number, b: number): number {"
+        ]
+      }
+    }
+  ],
+  "totalCostUsd": null,
+  "durationMs": 82641,
+  "branch": "helm-tdd/eval-B-js-parse_duration-r3-1783064591832",
+  "workspacePath": "/tmp/helm-tdd-eval-cnrtg9"
+}

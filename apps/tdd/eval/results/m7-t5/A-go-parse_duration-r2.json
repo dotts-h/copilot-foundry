@@ -1,0 +1,26 @@
+{
+  "arm": "A",
+  "language": "go",
+  "feature": "parse_duration",
+  "rep": 2,
+  "status": "accepted",
+  "perSlice": [
+    {
+      "mutationScore": 1,
+      "redLint": {
+        "blocking": [],
+        "warnings": []
+      },
+      "greenIterationsUsed": 1,
+      "refactorScopeViolation": {
+        "offendingHunks": [
+          "@@ -9,0 +10,5 @@ const DefaultOperand = 0"
+        ]
+      }
+    }
+  ],
+  "totalCostUsd": null,
+  "durationMs": 64730,
+  "branch": "helm-tdd/eval-A-go-parse_duration-r2-1783064191176",
+  "workspacePath": "/tmp/helm-tdd-eval-BxocDl"
+}

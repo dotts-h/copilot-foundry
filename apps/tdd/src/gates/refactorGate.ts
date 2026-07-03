@@ -62,7 +62,7 @@ export interface RefactorAttemptResult {
   telemetry: PhaseTelemetry | null;
   rawTestOutput: string | null;
   scopeViolation: RefactorScopeViolation | null;
-  scopeCheck: "enforced" | "skipped_no_spans";
+  scopeCheck: "enforced" | "skipped_no_spans" | "not_run";
   scopeAllowed: FunctionSpan[] | null;
 }
 
@@ -230,7 +230,7 @@ export async function attemptRefactor(opts: RefactorAttemptOptions): Promise<Ref
       telemetry: phase.telemetry,
       rawTestOutput: testResult.raw,
       scopeViolation: null,
-      scopeCheck: "skipped_no_spans",
+      scopeCheck: "not_run",
       scopeAllowed: null,
     };
   }

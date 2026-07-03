@@ -1,0 +1,26 @@
+{
+  "arm": "A",
+  "language": "js",
+  "feature": "format_bytes",
+  "rep": 2,
+  "status": "accepted",
+  "perSlice": [
+    {
+      "mutationScore": 1,
+      "redLint": {
+        "blocking": [],
+        "warnings": []
+      },
+      "greenIterationsUsed": 1,
+      "refactorScopeViolation": {
+        "offendingHunks": [
+          "@@ -7,0 +8 @@ const BINARY_UNITS = [\"B\", \"KiB\", \"MiB\", \"GiB\", \"TiB\", \"PiB\", \"EiB\", \"ZiB\", \"YiB"
+        ]
+      }
+    }
+  ],
+  "totalCostUsd": null,
+  "durationMs": 82039,
+  "branch": "helm-tdd/eval-A-js-format_bytes-r2-1783064748440",
+  "workspacePath": "/tmp/helm-tdd-eval-6n7PCQ"
+}

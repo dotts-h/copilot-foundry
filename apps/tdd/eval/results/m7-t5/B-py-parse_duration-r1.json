@@ -1,0 +1,28 @@
+{
+  "arm": "B",
+  "language": "py",
+  "feature": "parse_duration",
+  "rep": 1,
+  "status": "accepted",
+  "perSlice": [
+    {
+      "mutationScore": 1,
+      "redLint": {
+        "blocking": [],
+        "warnings": [
+          "only one assertion found -- a single example does not triangulate; consider a second, differently-valued case"
+        ]
+      },
+      "greenIterationsUsed": 1,
+      "refactorScopeViolation": {
+        "offendingHunks": [
+          "@@ -5,0 +6 @@ _COMPONENT_PATTERN = re.compile(r\"(\\d+)([hms])\")"
+        ]
+      }
+    }
+  ],
+  "totalCostUsd": null,
+  "durationMs": 144311,
+  "branch": "helm-tdd/eval-B-py-parse_duration-r1-1783064590062",
+  "workspacePath": "/tmp/helm-tdd-eval-v8DmsE"
+}

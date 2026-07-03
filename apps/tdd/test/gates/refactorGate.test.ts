@@ -99,6 +99,7 @@ describe("attemptRefactor", () => {
 
     expect(result.applied).toBe(false);
     expect(result.reason).toMatch(/broke the test/);
+    expect(result.scopeCheck).toBe("not_run");
     expect(readFileSync(join(dir, "add_kata.py"), "utf8")).toBe(VERBOSE_ADD);
   });
 

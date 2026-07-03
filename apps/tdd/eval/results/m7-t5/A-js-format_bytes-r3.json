@@ -1,0 +1,26 @@
+{
+  "arm": "A",
+  "language": "js",
+  "feature": "format_bytes",
+  "rep": 3,
+  "status": "accepted",
+  "perSlice": [
+    {
+      "mutationScore": 0.75,
+      "redLint": {
+        "blocking": [],
+        "warnings": []
+      },
+      "greenIterationsUsed": 1,
+      "refactorScopeViolation": {
+        "offendingHunks": [
+          "@@ -6,0 +7,18 @@ export function add(a: number, b: number): number {"
+        ]
+      }
+    }
+  ],
+  "totalCostUsd": null,
+  "durationMs": 75400,
+  "branch": "helm-tdd/eval-A-js-format_bytes-r3-1783064830494",
+  "workspacePath": "/tmp/helm-tdd-eval-xHvgNw"
+}

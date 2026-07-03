@@ -1,0 +1,26 @@
+{
+  "arm": "A",
+  "language": "js",
+  "feature": "parse_duration",
+  "rep": 3,
+  "status": "accepted",
+  "perSlice": [
+    {
+      "mutationScore": 1,
+      "redLint": {
+        "blocking": [],
+        "warnings": []
+      },
+      "greenIterationsUsed": 1,
+      "refactorScopeViolation": {
+        "offendingHunks": [
+          "@@ -8,0 +9,10 @@ const DURATION_SEGMENT = /(\\d+)([hms])/g;"
+        ]
+      }
+    }
+  ],
+  "totalCostUsd": null,
+  "durationMs": 98948,
+  "branch": "helm-tdd/eval-A-js-parse_duration-r3-1783064293929",
+  "workspacePath": "/tmp/helm-tdd-eval-O15JMC"
+}
