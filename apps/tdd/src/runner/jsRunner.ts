@@ -1,3 +1,4 @@
+import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { BaselineTestResult } from "../phases/baseline.js";
 import { runCommand } from "../exec.js";
@@ -351,8 +352,14 @@ export async function createJsRunner(targetDir: string): Promise<TargetRunner> {
     isTestFile,
     extractSymbols,
 
-    computeMutationScore(opts: MutationOptions) {
-      return computeJsMutationScore(() => runTests(opts.workDir, opts.testRelPath), opts, ctx.framework);
+    async computeMutationScore(opts: MutationOptions) {
+      const testSource = await readFile(join(opts.workDir, opts.testRelPath), "utf8");
+      return computeJsMutationScore(
+        () => runTests(opts.workDir, opts.testRelPath),
+        opts,
+        ctx.framework,
+        testSource,
+      );
     },
 
     runStaticGates,
