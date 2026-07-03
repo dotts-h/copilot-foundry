@@ -34,11 +34,15 @@ export function lintRedTestJs(testSource: string): import("../gates/redLinter.js
   return { blocking, warnings };
 }
 
+// The table-driven sentence won its A/B eval (m7-t5, 2026-07-03): +0.17 mutation score on the
+// feature with headroom, per-case failure reporting, zero negative-set regression.
 export const VITEST_RED_PROMPT_RULES =
-  "Import the target module with a dynamic `await import(...)` INSIDE the async test function — never a top-level static import of a symbol that may not exist yet, so a missing export fails only your test instead of breaking collection of the whole file.";
+  "Import the target module with a dynamic `await import(...)` INSIDE the async test function — never a top-level static import of a symbol that may not exist yet, so a missing export fails only your test instead of breaking collection of the whole file. " +
+  "When the behavior has three or more input cases, write ONE test.each table listing the cases, instead of near-identical separate tests. Assert only on observable behavior (return values, thrown errors), never on internals.";
 
 export const JEST_RED_PROMPT_RULES =
-  "Load the target module with `require(...)` INSIDE the test function — never a top-level import of a symbol that may not exist yet, so a missing export fails only your test.";
+  "Load the target module with `require(...)` INSIDE the test function — never a top-level import of a symbol that may not exist yet, so a missing export fails only your test. " +
+  "When the behavior has three or more input cases, write ONE test.each table listing the cases, instead of near-identical separate tests. Assert only on observable behavior (return values, thrown errors), never on internals.";
 
 export { JEST_HARNESS_ERROR_MARKERS, VITEST_HARNESS_ERROR_MARKERS, classifyJsRun } from "./jsClassify.js";
 
